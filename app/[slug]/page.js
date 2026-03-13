@@ -63,7 +63,6 @@ export default async function SmartLinkPage({ params }) {
     soundcloudUrl: link.soundcloudUrl || '',
     genre: link.genre || '',
     fbPixelId: link.fbPixelId || '',
-    fbAccessToken: link.fbAccessToken || '',
     bgColor: link.bgColor || '',
   };
 

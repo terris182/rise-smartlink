@@ -5,13 +5,13 @@ import { sendFBEvent } from '@/lib/fb-capi';
  * POST /api/track
  * Called from the client to fire server-side FB Conversions API events.
  * The client sends minimal data; the server adds IP + user agent automatically.
+ * Access token is read from env vars (never sent from the client).
  *
  * Body: {
  *   eventName: string,        // e.g. "PageView", "SmartLinkVisit", "LinkClick"
  *   eventId: string,          // unique ID for dedup with browser pixel
  *   sourceUrl: string,        // the page URL
- *   pixelId: string,          // FB pixel ID
- *   accessToken: string,      // FB CAPI access token
+ *   pixelId: string,          // FB pixel ID (or uses env default)
  *   fbc?: string,             // _fbc cookie value
  *   fbp?: string,             // _fbp cookie value
  *   externalId?: string,      // hashed external user ID
@@ -26,16 +26,19 @@ export async function POST(request) {
       eventId,
       sourceUrl,
       pixelId,
-      accessToken,
       fbc,
       fbp,
       externalId,
       customData = {},
     } = body;
 
-    if (!eventName || !pixelId || !accessToken) {
+    // Use env vars for credentials (never trust client-sent tokens)
+    const resolvedPixelId = pixelId || process.env.FB_PIXEL_ID;
+    const accessToken = process.env.FB_ACCESS_TOKEN;
+
+    if (!eventName || !resolvedPixelId || !accessToken) {
       return NextResponse.json(
-        { error: 'Missing required fields: eventName, pixelId, accessToken' },
+        { error: 'Missing required fields or FB credentials not configured' },
         { status: 400 }
       );
     }
@@ -48,7 +51,7 @@ export async function POST(request) {
     const userAgent = request.headers.get('user-agent') || '';
 
     const result = await sendFBEvent({
-      pixelId,
+      pixelId: resolvedPixelId,
       accessToken,
       eventName,
       eventId,

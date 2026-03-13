@@ -34,7 +34,6 @@ async function sendServerEvent({ eventName, eventId, link, customData = {} }) {
         eventId,
         sourceUrl: window.location.href,
         pixelId: link.fbPixelId,
-        accessToken: link.fbAccessToken,
         fbc: fbc || undefined,
         fbp: fbp || undefined,
         customData,
@@ -77,7 +76,7 @@ export default function SmartLinkClient({ link }) {
         window.fbq('trackCustom', 'SmartLinkVisit', customData, { eventID: visitId });
       }
 
-      if (link.fbPixelId && link.fbAccessToken) {
+      if (link.fbPixelId) {
         sendServerEvent({ eventName: 'PageView', eventId: pageViewId, link });
         sendServerEvent({ eventName: 'SmartLinkVisit', eventId: visitId, link, customData });
       }
@@ -105,7 +104,7 @@ export default function SmartLinkClient({ link }) {
         window.fbq('trackCustom', 'SmartLinkClick', customData, { eventID: clickId });
       }
 
-      if (link.fbPixelId && link.fbAccessToken) {
+      if (link.fbPixelId) {
         sendServerEvent({ eventName: 'SmartLinkClick', eventId: clickId, link, customData });
       }
 
