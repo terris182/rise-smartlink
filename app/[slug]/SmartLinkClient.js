@@ -49,6 +49,14 @@ async function sendServerEvent({ eventName, eventId, link, customData = {} }) {
 export default function SmartLinkClient({ link }) {
   const hasFired = useRef(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const imgRef = useRef(null);
+
+  // Fix: check if image already loaded before React hydrated
+  useEffect(() => {
+    if (imgRef.current?.complete && imgRef.current?.naturalWidth > 0) {
+      setImgLoaded(true);
+    }
+  }, []);
 
   // Fire PageView + Smart Link Visit on load
   useEffect(() => {
@@ -192,6 +200,7 @@ export default function SmartLinkClient({ link }) {
           <div style={styles.coverWrapper}>
             {link.coverUrl ? (
               <img
+                ref={imgRef}
                 src={link.coverUrl}
                 alt={`${link.title} by ${link.artist}`}
                 style={{
@@ -281,6 +290,7 @@ const styles = {
     maxWidth: '320px',
     aspectRatio: '1 / 1',
     overflow: 'hidden',
+    borderRadius: '8px',
     boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
     marginBottom: '1.25rem',
     backgroundColor: 'rgba(255,255,255,0.05)',
