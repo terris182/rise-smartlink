@@ -238,7 +238,7 @@ export default function SmartLinkClient({ link }) {
                 }}
               >
                 <span style={styles.buttonIcon}>{p.icon}</span>
-                <span style={styles.buttonLabel}>{p.label}</span>
+                <span style={{ ...styles.buttonLabel, color: p.color }}>{p.label}</span>
                 <span style={styles.playBtn}>Play</span>
               </button>
             ))}
@@ -336,10 +336,10 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     width: '100%',
-    height: '48px',
+    height: '54px',
     background: '#fff',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: '12px',
     padding: '0 16px',
     cursor: 'pointer',
     transition: 'transform 0.15s ease, box-shadow 0.15s ease',
@@ -355,9 +355,9 @@ const styles = {
   buttonLabel: {
     flex: 1,
     textAlign: 'left',
-    fontWeight: 500,
+    fontWeight: 600,
     color: '#222',
-    fontSize: '15px',
+    fontSize: '16px',
     marginLeft: '12px',
   },
   playBtn: {
