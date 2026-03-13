@@ -1,14 +1,33 @@
-import { getLink } from '@/lib/links';
+import { getLink, updateLink } from '@/lib/links';
+import { fetchSpotifyMeta } from '@/lib/spotify';
 import { notFound } from 'next/navigation';
 import SmartLinkClient from './SmartLinkClient';
 
 /**
  * Dynamic smart link page.
- * Server component fetches link data, passes to client component for interactivity.
+ * Server component fetches link data, auto-resolves cover art
+ * from Spotify oEmbed if missing, then passes to client component.
  */
+
+async function resolveLink(slug) {
+  const link = getLink(slug);
+  if (!link) return null;
+
+  // Auto-fetch cover art from Spotify oEmbed if missing
+  if (!link.coverUrl && link.spotifyUrl) {
+    const meta = await fetchSpotifyMeta(link.spotifyUrl);
+    if (meta?.thumbnailUrl) {
+      updateLink(slug, { coverUrl: meta.thumbnailUrl });
+      link.coverUrl = meta.thumbnailUrl;
+    }
+  }
+
+  return link;
+}
+
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const link = getLink(slug);
+  const link = await resolveLink(slug);
   if (!link) return { title: 'Not Found' };
 
   return {
@@ -30,7 +49,7 @@ export async function generateMetadata({ params }) {
 
 export default async function SmartLinkPage({ params }) {
   const { slug } = await params;
-  const link = getLink(slug);
+  const link = await resolveLink(slug);
   if (!link) notFound();
 
   // Pass serializable link data to client component

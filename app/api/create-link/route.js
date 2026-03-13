@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server';
 import { createLink, getLink } from '@/lib/links';
+import { fetchSpotifyMeta } from '@/lib/spotify';
 
 /**
  * POST /api/create-link
  * Creates a new smart link page.
  *
+ * Only requires: slug, spotifyUrl
+ * Title, artist, and coverUrl are auto-fetched from Spotify oEmbed if not provided.
+ *
  * Body: {
  *   slug: string,           // URL path e.g. "my-new-song"
- *   title: string,          // Song title
- *   artist: string,         // Artist name
- *   coverUrl: string,       // Cover art image URL
- *   spotifyUrl: string,     // Spotify track/album URL
+ *   spotifyUrl: string,     // Spotify track/album URL (REQUIRED)
+ *   title?: string,         // Song title (auto-fetched from Spotify if omitted)
+ *   artist?: string,        // Artist name (auto-fetched from Spotify if omitted)
+ *   coverUrl?: string,      // Cover art URL (auto-fetched from Spotify if omitted)
  *   appleMusicUrl?: string, // Apple Music URL (optional)
  *   soundcloudUrl?: string, // SoundCloud URL (optional)
  *   genre?: string,         // Genre (optional)
@@ -24,14 +28,11 @@ export async function POST(request) {
     const body = await request.json();
 
     // Validate required fields
-    const required = ['slug', 'title', 'artist', 'coverUrl', 'spotifyUrl'];
-    for (const field of required) {
-      if (!body[field]) {
-        return NextResponse.json(
-          { error: `Missing required field: ${field}` },
-          { status: 400 }
-        );
-      }
+    if (!body.slug) {
+      return NextResponse.json({ error: 'Missing required field: slug' }, { status: 400 });
+    }
+    if (!body.spotifyUrl) {
+      return NextResponse.json({ error: 'Missing required field: spotifyUrl' }, { status: 400 });
     }
 
     // Sanitize slug
@@ -49,7 +50,21 @@ export async function POST(request) {
       );
     }
 
-    const link = createLink({ ...body, slug });
+    // Auto-fetch metadata from Spotify oEmbed if title/artist/cover not provided
+    let { title, artist, coverUrl } = body;
+    if (!title || !artist || !coverUrl) {
+      const meta = await fetchSpotifyMeta(body.spotifyUrl);
+      if (meta) {
+        if (!coverUrl) coverUrl = meta.thumbnailUrl;
+        // oEmbed title format: "Track Name" (no artist separation available)
+        if (!title) title = meta.title || body.slug;
+      }
+    }
+
+    if (!title) title = body.slug;
+    if (!artist) artist = '';
+
+    const link = createLink({ ...body, slug, title, artist, coverUrl });
 
     return NextResponse.json({
       success: true,
