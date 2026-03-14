@@ -7,7 +7,14 @@ import SmartLinkClient from './SmartLinkClient';
  * Dynamic smart link page.
  * Server component fetches link data, auto-resolves cover art
  * from Spotify oEmbed if missing, then passes to client component.
+ *
+ * Uses catch-all route [...slug] to support artist-name/song-name URLs.
  */
+
+function parseSlug(params) {
+  const parts = params.slug;
+  return Array.isArray(parts) ? parts.join('/') : parts;
+}
 
 async function resolveLink(slug) {
   const link = getLink(slug);
@@ -26,7 +33,7 @@ async function resolveLink(slug) {
 }
 
 export async function generateMetadata({ params }) {
-  const { slug } = await params;
+  const slug = parseSlug(await params);
   const link = await resolveLink(slug);
   if (!link) return { title: 'Not Found' };
 
@@ -48,7 +55,7 @@ export async function generateMetadata({ params }) {
 }
 
 export default async function SmartLinkPage({ params }) {
-  const { slug } = await params;
+  const slug = parseSlug(await params);
   const link = await resolveLink(slug);
   if (!link) notFound();
 

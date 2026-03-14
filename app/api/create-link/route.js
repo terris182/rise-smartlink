@@ -66,33 +66,43 @@ export async function POST(request) {
     if (!title) title = 'Untitled';
     if (!artist) artist = '';
 
-    // Generate slug from title if not provided
+    // Generate slug as artist-name/song-name
     let slug = body.slug;
     if (!slug) {
-      slug = title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
+      const sanitize = (str) =>
+        str
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
 
-      // If slug is empty or too short, add a random suffix
-      if (slug.length < 2) {
+      const artistSlug = artist ? sanitize(artist) : '';
+      const titleSlug = sanitize(title);
+
+      if (artistSlug && titleSlug) {
+        slug = `${artistSlug}/${titleSlug}`;
+      } else if (titleSlug) {
+        slug = titleSlug;
+      } else {
         slug = 'link-' + Math.random().toString(36).substring(2, 8);
       }
     } else {
-      // Sanitize provided slug
+      // Sanitize provided slug (allow forward slashes for artist/song format)
       slug = slug
         .toLowerCase()
-        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/[^a-z0-9/-]/g, '-')
         .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
+        .replace(/^[-/]|[-/]$/g, '');
     }
 
-    // If slug exists, append a random suffix to make it unique
+    // If slug exists, append sequential serial number (-1, -2, etc.)
     if (getLink(slug)) {
-      const suffix = Math.random().toString(36).substring(2, 6);
-      slug = `${slug}-${suffix}`;
+      let serial = 1;
+      while (getLink(`${slug}-${serial}`)) {
+        serial++;
+      }
+      slug = `${slug}-${serial}`;
     }
 
     const link = createLink({
