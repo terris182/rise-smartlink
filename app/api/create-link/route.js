@@ -4,23 +4,30 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 
 /**
  * POST /api/create-link
- * Creates a new smart link page.
+ * Creates a new smart link page from a Spotify track or playlist URL.
  *
- * Only requires: slug, spotifyUrl
- * Title, artist, and coverUrl are auto-fetched from Spotify oEmbed if not provided.
+ * Required: spotifyUrl
+ * Optional: title (headline), artist (subtext), slug, appleMusicUrl, soundcloudUrl, genre, bgColor
+ *
+ * - Auto-fetches artwork from Spotify oEmbed
+ * - Auto-generates slug from title if not provided
+ * - Returns the full gudmuzik.com URL
  *
  * Body: {
- *   slug: string,           // URL path e.g. "my-new-song"
- *   spotifyUrl: string,     // Spotify track/album URL (REQUIRED)
- *   title?: string,         // Song title (auto-fetched from Spotify if omitted)
- *   artist?: string,        // Artist name (auto-fetched from Spotify if omitted)
- *   coverUrl?: string,      // Cover art URL (auto-fetched from Spotify if omitted)
+ *   spotifyUrl: string,     // Spotify track/album/playlist URL (REQUIRED)
+ *   title?: string,         // Headline text (auto-fetched from Spotify if omitted)
+ *   artist?: string,        // Subtext (auto-fetched from Spotify if omitted)
+ *   slug?: string,          // Custom URL path (auto-generated from title if omitted)
  *   appleMusicUrl?: string, // Apple Music URL (optional)
  *   soundcloudUrl?: string, // SoundCloud URL (optional)
  *   genre?: string,         // Genre (optional)
- *   fbPixelId?: string,     // FB Pixel ID (optional, falls back to env)
- *   fbAccessToken?: string, // FB CAPI token (optional, falls back to env)
  *   bgColor?: string,       // Background color hex (optional)
+ * }
+ *
+ * Response: {
+ *   success: true,
+ *   link: { ...linkData },
+ *   url: "https://gudmuzik.com/my-song"
  * }
  */
 export async function POST(request) {
@@ -28,48 +35,82 @@ export async function POST(request) {
     const body = await request.json();
 
     // Validate required fields
-    if (!body.slug) {
-      return NextResponse.json({ error: 'Missing required field: slug' }, { status: 400 });
-    }
     if (!body.spotifyUrl) {
-      return NextResponse.json({ error: 'Missing required field: spotifyUrl' }, { status: 400 });
-    }
-
-    // Sanitize slug
-    const slug = body.slug
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
-
-    // Check if slug already exists
-    if (getLink(slug)) {
       return NextResponse.json(
-        { error: `Slug "${slug}" already exists` },
-        { status: 409 }
+        { error: 'Missing required field: spotifyUrl' },
+        { status: 400 }
       );
     }
 
-    // Auto-fetch metadata from Spotify oEmbed if title/artist/cover not provided
+    // Auto-fetch metadata from Spotify oEmbed
     let { title, artist, coverUrl } = body;
     if (!title || !artist || !coverUrl) {
       const meta = await fetchSpotifyMeta(body.spotifyUrl);
       if (meta) {
         if (!coverUrl) coverUrl = meta.thumbnailUrl;
-        // oEmbed title format: "Track Name" (no artist separation available)
-        if (!title) title = meta.title || body.slug;
+        if (!title) title = meta.title || '';
       }
     }
 
-    if (!title) title = body.slug;
+    // Parse title from oEmbed format: "Track Name - Artist Name" or "Track Name"
+    if (title && !artist) {
+      const parts = title.split(' - ');
+      if (parts.length >= 2) {
+        // oEmbed returns "Title - Artist" for tracks
+        title = parts[0].trim();
+        artist = parts.slice(1).join(' - ').trim();
+      }
+    }
+
+    if (!title) title = 'Untitled';
     if (!artist) artist = '';
 
-    const link = createLink({ ...body, slug, title, artist, coverUrl });
+    // Generate slug from title if not provided
+    let slug = body.slug;
+    if (!slug) {
+      slug = title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+      // If slug is empty or too short, add a random suffix
+      if (slug.length < 2) {
+        slug = 'link-' + Math.random().toString(36).substring(2, 8);
+      }
+    } else {
+      // Sanitize provided slug
+      slug = slug
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+    }
+
+    // If slug exists, append a random suffix to make it unique
+    if (getLink(slug)) {
+      const suffix = Math.random().toString(36).substring(2, 6);
+      slug = `${slug}-${suffix}`;
+    }
+
+    const link = createLink({
+      ...body,
+      slug,
+      title,
+      artist,
+      coverUrl: coverUrl || '',
+    });
+
+    // Build the full URL using the request host or fallback to gudmuzik.com
+    const host = request.headers.get('host') || 'gudmuzik.com';
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+    const fullUrl = `${protocol}://${host}/${slug}`;
 
     return NextResponse.json({
       success: true,
       link,
-      url: `/${slug}`,
+      url: fullUrl,
     });
   } catch (err) {
     console.error('[/api/create-link] Error:', err);
