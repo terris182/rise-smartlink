@@ -38,7 +38,7 @@ export async function GET(request) {
       slug = slug.replace(/^\//, '').replace(/\/$/, '');
     }
 
-    const link = getLink(slug);
+    const link = await getLink(slug);
     if (!link) {
       return NextResponse.json(
         { error: `Link not found: ${slug}` },

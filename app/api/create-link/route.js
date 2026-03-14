@@ -97,15 +97,15 @@ export async function POST(request) {
     }
 
     // If slug exists, append sequential serial number (-1, -2, etc.)
-    if (getLink(slug)) {
+    if (await getLink(slug)) {
       let serial = 1;
-      while (getLink(`${slug}-${serial}`)) {
+      while (await getLink(`${slug}-${serial}`)) {
         serial++;
       }
       slug = `${slug}-${serial}`;
     }
 
-    const link = createLink({
+    const link = await createLink({
       ...body,
       slug,
       title,

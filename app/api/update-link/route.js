@@ -48,7 +48,7 @@ export async function PUT(request) {
       slug = slug.replace(/^\//, '').replace(/\/$/, '');
     }
 
-    const existing = getLink(slug);
+    const existing = await getLink(slug);
     if (!existing) {
       return NextResponse.json(
         { error: `Link not found: ${slug}` },
@@ -76,7 +76,7 @@ export async function PUT(request) {
       );
     }
 
-    const updated = updateLink(slug, updates);
+    const updated = await updateLink(slug, updates);
 
     // Strip sensitive fields from response
     const { fbAccessToken, ...safeLink } = updated;

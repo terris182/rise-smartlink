@@ -17,14 +17,14 @@ function parseSlug(params) {
 }
 
 async function resolveLink(slug) {
-  const link = getLink(slug);
+  const link = await getLink(slug);
   if (!link) return null;
 
   // Auto-fetch cover art from Spotify oEmbed if missing
   if (!link.coverUrl && link.spotifyUrl) {
     const meta = await fetchSpotifyMeta(link.spotifyUrl);
     if (meta?.thumbnailUrl) {
-      updateLink(slug, { coverUrl: meta.thumbnailUrl });
+      await updateLink(slug, { coverUrl: meta.thumbnailUrl });
       link.coverUrl = meta.thumbnailUrl;
     }
   }
