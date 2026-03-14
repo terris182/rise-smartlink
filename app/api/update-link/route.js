@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getLink, updateLink } from '@/lib/links';
 
 /**
@@ -77,6 +78,13 @@ export async function PUT(request) {
     }
 
     const updated = await updateLink(slug, updates);
+
+    // Purge cached page so the updated data is served immediately
+    try {
+      revalidatePath(`/${slug}`);
+    } catch (e) {
+      console.warn('[/api/update-link] revalidatePath warning:', e.message);
+    }
 
     // Strip sensitive fields from response
     const { fbAccessToken, ...safeLink } = updated;

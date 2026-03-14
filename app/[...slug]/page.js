@@ -3,6 +3,9 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { notFound } from 'next/navigation';
 import SmartLinkClient from './SmartLinkClient';
 
+// Never cache — always fetch fresh data from KV
+export const dynamic = 'force-dynamic';
+
 /**
  * Dynamic smart link page.
  * Server component fetches link data, auto-resolves cover art
