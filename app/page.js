@@ -63,15 +63,30 @@ export default function Home() {
       {/* Logo / Brand */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
         <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0',
           fontSize: '3rem',
           fontWeight: 800,
           letterSpacing: '-0.02em',
-          background: 'linear-gradient(135deg, #1ED760 0%, #1DB954 50%, #00d4ff 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
+          color: '#86efac',
+          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         }}>
-          GudMuzik
+          {/* Play-button G icon */}
+          <svg viewBox="0 0 48 48" width="64" height="64" style={{ marginRight: '-4px', marginBottom: '-2px' }}>
+            {/* G body: thick C-arc */}
+            <circle cx="22" cy="24" r="18" fill="#86efac"/>
+            <circle cx="22" cy="24" r="9" fill="#0a0a0a"/>
+            {/* Cut top-right to make C shape */}
+            <rect x="22" y="3" width="24" height="14" fill="#0a0a0a"/>
+            {/* G horizontal bar */}
+            <rect x="22" y="21" width="22" height="7" fill="#86efac"/>
+            {/* G right vertical stem */}
+            <rect x="37" y="21" width="7" height="21" fill="#86efac"/>
+            {/* Play triangle */}
+            <polygon points="17,13 34,24 17,35" fill="#16a34a"/>
+          </svg>
+          <span>udMuzik</span>
         </div>
         <div style={{
           fontSize: '0.85rem',
