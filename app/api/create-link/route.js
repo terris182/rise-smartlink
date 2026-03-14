@@ -107,9 +107,12 @@ export async function POST(request) {
     const protocol = host.includes('localhost') ? 'http' : 'https';
     const fullUrl = `${protocol}://${host}/${slug}`;
 
+    // Strip sensitive fields from response
+    const { fbAccessToken, ...safeLink } = link;
+
     return NextResponse.json({
       success: true,
-      link,
+      link: safeLink,
       url: fullUrl,
     });
   } catch (err) {
