@@ -73,18 +73,18 @@ export default function Home() {
           fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         }}>
           {/* Play-button G icon */}
-          <svg viewBox="0 0 48 48" width="64" height="64" style={{ marginRight: '-4px', marginBottom: '-2px' }}>
+          <svg viewBox="0 0 32 32" width="56" height="56" style={{ marginRight: '-2px', marginBottom: '-2px' }}>
             {/* G body: thick C-arc */}
-            <circle cx="22" cy="24" r="18" fill="#86efac"/>
-            <circle cx="22" cy="24" r="9" fill="#0a0a0a"/>
-            {/* Cut top-right to make C shape */}
-            <rect x="22" y="3" width="24" height="14" fill="#0a0a0a"/>
+            <circle cx="15" cy="16" r="11" fill="#86efac"/>
+            <circle cx="15" cy="16" r="6.5" fill="#0a0a0a"/>
+            {/* Cut top-right gap */}
+            <rect x="15" y="3.5" width="14" height="8.5" fill="#0a0a0a"/>
             {/* G horizontal bar */}
-            <rect x="22" y="21" width="22" height="7" fill="#86efac"/>
+            <rect x="15" y="14.5" width="12.5" height="4" fill="#86efac"/>
             {/* G right vertical stem */}
-            <rect x="37" y="21" width="7" height="21" fill="#86efac"/>
-            {/* Play triangle */}
-            <polygon points="17,13 34,24 17,35" fill="#16a34a"/>
+            <rect x="23.5" y="14.5" width="4" height="12.5" fill="#86efac"/>
+            {/* Play triangle - same color */}
+            <polygon points="11.5,10 19,16 11.5,22" fill="#86efac"/>
           </svg>
           <span>udMuzik</span>
         </div>
