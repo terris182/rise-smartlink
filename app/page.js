@@ -62,20 +62,7 @@ export default function Home() {
     }}>
       {/* Logo / Brand */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0',
-          fontSize: '3rem',
-          fontWeight: 800,
-          letterSpacing: '-0.02em',
-          color: '#86efac',
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        }}>
-          {/* Play-button G icon */}
-          <img src="/logo-icon.png" alt="GudMuzik" width="56" height="56" style={{ marginRight: '-2px', marginBottom: '-2px' }} />
-          <span>udMuzik</span>
-        </div>
+        <img src="/logo-wordmark.png" alt="GudMuzik" height="60" style={{ maxWidth: '90vw', objectFit: 'contain' }} />
         <div style={{
           fontSize: '0.85rem',
           textTransform: 'uppercase',
