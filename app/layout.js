@@ -1,8 +1,8 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Rise Smart Links',
-  description: 'Fast music landing pages with conversion tracking',
+  title: 'GudMuzik – Music Discovery Powered by Rise',
+  description: 'GudMuzik is a music discovery platform powered by Rise. Get your music in front of real listeners at rise.la',
 };
 
 export default function RootLayout({ children }) {
