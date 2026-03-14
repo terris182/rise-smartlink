@@ -69,6 +69,7 @@ export default function SmartLinkClient({ link }) {
         artist_name: link.artist,
         title: link.title,
         genre: link.genre,
+        subgenre: link.subgenre,
       };
 
       if (typeof window.fbq === 'function') {
@@ -77,7 +78,7 @@ export default function SmartLinkClient({ link }) {
       }
 
       if (link.fbPixelId) {
-        sendServerEvent({ eventName: 'PageView', eventId: pageViewId, link });
+        sendServerEvent({ eventName: 'PageView', eventId: pageViewId, link, customData });
         sendServerEvent({ eventName: 'SmartLinkVisit', eventId: visitId, link, customData });
       }
     };
@@ -97,6 +98,7 @@ export default function SmartLinkClient({ link }) {
         artist_name: link.artist,
         title: link.title,
         genre: link.genre,
+        subgenre: link.subgenre,
         platform,
       };
 

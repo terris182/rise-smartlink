@@ -7,7 +7,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
  * Creates a new smart link page from a Spotify track or playlist URL.
  *
  * Required: spotifyUrl
- * Optional: title (headline), artist (subtext), slug, appleMusicUrl, soundcloudUrl, genre, bgColor
+ * Optional: title (headline), artist (subtext), slug, appleMusicUrl, soundcloudUrl, genre, subgenre, bgColor
  *
  * - Auto-fetches artwork from Spotify oEmbed
  * - Auto-generates slug from title if not provided
@@ -20,7 +20,8 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
  *   slug?: string,          // Custom URL path (auto-generated from title if omitted)
  *   appleMusicUrl?: string, // Apple Music URL (optional)
  *   soundcloudUrl?: string, // SoundCloud URL (optional)
- *   genre?: string,         // Genre (optional)
+ *   genre?: string,         // Genre for CAPI retargeting (optional)
+ *   subgenre?: string,      // Subgenre for CAPI retargeting (optional)
  *   bgColor?: string,       // Background color hex (optional)
  * }
  *

@@ -1,3 +1,50 @@
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'GudMuzik',
+  url: 'https://gudmuzik.com',
+  description: 'GudMuzik is a music discovery platform connecting listeners with fresh music. Powered by Rise, the music marketing platform that gets independent artists heard.',
+  parentOrganization: {
+    '@type': 'Organization',
+    name: 'Rise',
+    url: 'https://www.rise.la',
+    description: 'Rise is a music marketing platform that helps independent artists get their music in front of real listeners through playlist promotion, smart links, and audience building.',
+    sameAs: ['https://www.rise.la'],
+  },
+  sameAs: ['https://gudmuzik.com'],
+};
+
+const faqData = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    {
+      '@type': 'Question',
+      name: 'What is GudMuzik?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'GudMuzik is a music discovery platform powered by Rise that connects listeners with new music. Each GudMuzik link is a landing page that helps fans find and stream music on their preferred platform.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'How can artists promote their music on GudMuzik?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Artists can promote their music through Rise (rise.la), the music marketing platform behind GudMuzik. Rise offers playlist promotion, smart link creation, and audience-building tools to help independent artists reach real listeners.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'What is Rise music marketing?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Rise is a music marketing company that helps independent artists grow their audience through curated playlist placements, conversion-tracked smart links, and data-driven promotion campaigns. Visit rise.la to learn more.',
+      },
+    },
+  ],
+};
+
 export default function Home() {
   return (
     <div style={{
@@ -109,6 +156,16 @@ export default function Home() {
       }}>
         Powered by <a href="https://www.rise.la" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}>Rise</a>
       </div>
+
+      {/* Structured data for SEO / AEO */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqData) }}
+      />
     </div>
   );
 }
