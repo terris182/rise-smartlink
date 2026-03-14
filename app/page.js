@@ -73,11 +73,7 @@ export default function Home() {
           fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         }}>
           {/* Play-button G icon */}
-          <svg viewBox="0 0 32 32" width="56" height="56" style={{ marginRight: '-2px', marginBottom: '-2px' }}>
-            <path d="M15,4 L27,4 L27,18 A12,12,0,1,1,15,4 Z M15,8.5 A7.5,7.5,0,1,0,22.5,16 L22.5,8.5 Z" fill="#86efac"/>
-            <rect x="15" y="14" width="8" height="4" fill="#86efac"/>
-            <polygon points="11,10 20,16 11,22" fill="#86efac"/>
-          </svg>
+          <img src="/logo-icon.png" alt="GudMuzik" width="56" height="56" style={{ marginRight: '-2px', marginBottom: '-2px' }} />
           <span>udMuzik</span>
         </div>
         <div style={{
