@@ -1,5 +1,6 @@
 import { getLink, updateLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
+import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { notFound } from 'next/navigation';
 import SmartLinkClient from './SmartLinkClient';
 
@@ -9,7 +10,8 @@ export const dynamic = 'force-dynamic';
 /**
  * Dynamic smart link page.
  * Server component fetches link data, auto-resolves cover art
- * from Spotify oEmbed if missing, then passes to client component.
+ * from Spotify oEmbed if missing, auto-resolves Apple Music URL
+ * via Songlink/Odesli API if missing, then passes to client component.
  *
  * Uses catch-all route [...slug] to support artist-name/song-name URLs.
  */
@@ -23,13 +25,29 @@ async function resolveLink(slug) {
   const link = await getLink(slug);
   if (!link) return null;
 
+  const updates = {};
+
   // Auto-fetch cover art from Spotify oEmbed if missing
   if (!link.coverUrl && link.spotifyUrl) {
     const meta = await fetchSpotifyMeta(link.spotifyUrl);
     if (meta?.thumbnailUrl) {
-      await updateLink(slug, { coverUrl: meta.thumbnailUrl });
+      updates.coverUrl = meta.thumbnailUrl;
       link.coverUrl = meta.thumbnailUrl;
     }
+  }
+
+  // Auto-resolve Apple Music URL from Spotify via Songlink/Odesli if missing
+  if (!link.appleMusicUrl && link.spotifyUrl) {
+    const crossLinks = await fetchCrossPlatformLinks(link.spotifyUrl);
+    if (crossLinks?.appleMusicUrl) {
+      updates.appleMusicUrl = crossLinks.appleMusicUrl;
+      link.appleMusicUrl = crossLinks.appleMusicUrl;
+    }
+  }
+
+  // Persist any auto-resolved fields back to KV
+  if (Object.keys(updates).length > 0) {
+    await updateLink(slug, updates);
   }
 
   return link;
@@ -70,7 +88,6 @@ export default async function SmartLinkPage({ params }) {
     coverUrl: link.coverUrl,
     spotifyUrl: link.spotifyUrl,
     appleMusicUrl: link.appleMusicUrl || '',
-    soundcloudUrl: link.soundcloudUrl || '',
     genre: link.genre || '',
     subgenre: link.subgenre || '',
     fbPixelId: link.fbPixelId || '',

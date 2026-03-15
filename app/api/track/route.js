@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { sendFBEvent } from '@/lib/fb-capi';
+import { recordVisit, recordClick } from '@/lib/analytics';
 
 /**
  * POST /api/track
- * Called from the client to fire server-side FB Conversions API events.
- * The client sends minimal data; the server adds IP, user agent, geo, and device info automatically.
- * Access token is read from env vars (never sent from the client).
+ * Called from the client to fire server-side FB Conversions API events
+ * AND record analytics in Vercel KV for the dashboard.
  *
  * Body: {
- *   eventName: string,        // e.g. "PageView", "SmartLinkVisit", "SmartLinkClick"
+ *   eventName: string,        // e.g. "PageView", "Hypeddit Smart Link Visit", "Hypeddit Smart Link Click"
  *   eventId: string,          // unique ID for dedup with browser pixel
  *   sourceUrl: string,        // the page URL
  *   pixelId: string,          // FB pixel ID (or uses env default)
@@ -17,14 +17,6 @@ import { sendFBEvent } from '@/lib/fb-capi';
  *   externalId?: string,      // hashed external user ID
  *   customData?: object,      // any custom data (artist_name, title, genre, subgenre, platform, etc.)
  * }
- *
- * Server-enriched data (added automatically from request headers):
- * - IP address (x-forwarded-for)
- * - User agent
- * - Geo: country, region, city (from Vercel x-vercel-ip-* headers)
- * - Device type: parsed from user-agent (mobile/desktop/tablet)
- * - OS: parsed from user-agent
- * - UTM params: extracted from sourceUrl
  */
 
 /**
@@ -37,7 +29,6 @@ function parseDevice(ua) {
   let os = 'unknown';
   let deviceType = 'desktop';
 
-  // Detect OS
   if (/iphone|ipad|ipod/.test(uaLower)) {
     os = 'iOS';
     deviceType = /ipad/.test(uaLower) ? 'tablet' : 'mobile';
@@ -72,6 +63,23 @@ function extractUTMs(url) {
     return utms;
   } catch {
     return {};
+  }
+}
+
+/**
+ * Extract slug from a gudmuzik.com source URL.
+ * e.g. "https://gudmuzik.com/vex-verity/tragedies?fbclid=..." → "vex-verity/tragedies"
+ */
+function extractSlug(sourceUrl) {
+  if (!sourceUrl) return null;
+  try {
+    const url = new URL(sourceUrl);
+    const path = url.pathname.replace(/^\//, '').replace(/\/$/, '');
+    // Skip dashboard/api paths
+    if (path.startsWith('dashboard') || path.startsWith('api') || !path) return null;
+    return path;
+  } catch {
+    return null;
   }
 }
 
@@ -119,32 +127,44 @@ export async function POST(request) {
     const utms = extractUTMs(sourceUrl);
 
     // Build enriched custom data for CAPI
-    // Genre/subgenre go into content_category for FB retargeting audiences
     const enrichedCustomData = {
       ...customData,
     };
 
-    // FB CAPI standard fields for content categorization
     if (customData.genre) {
       enrichedCustomData.content_category = customData.subgenre
         ? `${customData.genre} > ${customData.subgenre}`
         : customData.genre;
     }
 
-    // Add geo data
     if (country) enrichedCustomData.geo_country = country;
     if (region) enrichedCustomData.geo_region = region;
     if (city) enrichedCustomData.geo_city = city;
-
-    // Add device data
     enrichedCustomData.device_type = deviceType;
     enrichedCustomData.device_os = os;
-
-    // Add UTM data
     if (Object.keys(utms).length > 0) {
       Object.assign(enrichedCustomData, utms);
     }
 
+    // --- Record analytics in KV (non-blocking) ---
+    const slug = extractSlug(sourceUrl);
+    const analyticsData = { country, region, city, deviceType, os };
+
+    if (slug) {
+      if (eventName === 'Hypeddit Smart Link Visit') {
+        // Don't await — fire and forget so it doesn't slow the response
+        recordVisit(slug, analyticsData).catch((e) =>
+          console.error('[Analytics] recordVisit failed:', e)
+        );
+      } else if (eventName === 'Hypeddit Smart Link Click') {
+        recordClick(slug, {
+          ...analyticsData,
+          platform: customData.platform || '',
+        }).catch((e) => console.error('[Analytics] recordClick failed:', e));
+      }
+    }
+
+    // --- Send to FB CAPI ---
     const result = await sendFBEvent({
       pixelId: resolvedPixelId,
       accessToken,
@@ -157,7 +177,6 @@ export async function POST(request) {
         fbc: fbc || undefined,
         fbp: fbp || undefined,
         externalId: externalId || undefined,
-        // Pass geo to user_data for FB matching (hashed automatically by fb-capi.js)
         city: city || undefined,
         state: region || undefined,
         country: country || undefined,

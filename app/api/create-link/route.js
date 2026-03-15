@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server';
 import { createLink, getLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
+import { fetchCrossPlatformLinks } from '@/lib/songlink';
 
 /**
  * POST /api/create-link
  * Creates a new smart link page from a Spotify track or playlist URL.
  *
  * Required: spotifyUrl
- * Optional: title (headline), artist (subtext), slug, appleMusicUrl, soundcloudUrl, genre, subgenre, bgColor
+ * Optional: title (headline), artist (subtext), slug, appleMusicUrl, genre, subgenre, bgColor
  *
  * - Auto-fetches artwork from Spotify oEmbed
+ * - Auto-resolves Apple Music URL via Songlink/Odesli API
  * - Auto-generates slug from title if not provided
  * - Returns the full gudmuzik.com URL
  *
@@ -18,8 +20,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
  *   title?: string,         // Headline text (auto-fetched from Spotify if omitted)
  *   artist?: string,        // Subtext (auto-fetched from Spotify if omitted)
  *   slug?: string,          // Custom URL path (auto-generated from title if omitted)
- *   appleMusicUrl?: string, // Apple Music URL (optional)
- *   soundcloudUrl?: string, // SoundCloud URL (optional)
+ *   appleMusicUrl?: string, // Apple Music URL (auto-resolved from Spotify if omitted)
  *   genre?: string,         // Genre for CAPI retargeting (optional)
  *   subgenre?: string,      // Subgenre for CAPI retargeting (optional)
  *   bgColor?: string,       // Background color hex (optional)
@@ -44,7 +45,7 @@ export async function POST(request) {
     }
 
     // Auto-fetch metadata from Spotify oEmbed
-    let { title, artist, coverUrl } = body;
+    let { title, artist, coverUrl, appleMusicUrl } = body;
     if (!title || !artist || !coverUrl) {
       const meta = await fetchSpotifyMeta(body.spotifyUrl);
       if (meta) {
@@ -65,6 +66,14 @@ export async function POST(request) {
 
     if (!title) title = 'Untitled';
     if (!artist) artist = '';
+
+    // Auto-resolve Apple Music URL via Songlink/Odesli API if not provided
+    if (!appleMusicUrl && body.spotifyUrl) {
+      const crossLinks = await fetchCrossPlatformLinks(body.spotifyUrl);
+      if (crossLinks?.appleMusicUrl) {
+        appleMusicUrl = crossLinks.appleMusicUrl;
+      }
+    }
 
     // Generate slug as artist-name/song-name
     let slug = body.slug;
@@ -111,6 +120,7 @@ export async function POST(request) {
       title,
       artist,
       coverUrl: coverUrl || '',
+      appleMusicUrl: appleMusicUrl || '',
     });
 
     // Build the full URL using the request host or fallback to gudmuzik.com
