@@ -24,15 +24,186 @@ const C = {
   grayDarker: '#475569',
 };
 
+// Ordered by signal importance: decision models first, then by signal power ranking
 const MODEL_ORDER = [
-  'irs','momentum','release_phase','advance_pricing',
-  'scale','growth','engagement','market_fit','volatility',
-  'release_recency','listener_concentration','playlist_performance',
-  'superfan_index','revenue_stability','upside_potential',
-  'marketing_roi','advance_recoupment','development_stage',
-  'social_conversion','sync_readiness','territorial_growth',
-  'fan_monetization','budget_allocation',
+  // Tier 1: Core Decision Models
+  'budget_allocation','momentum','irs',
+  // Tier 2: Top Signal Models (save rate, playlist adds, listener growth)
+  'engagement','playlist_performance','growth',
+  // Tier 3: ROI & Investment
+  'marketing_roi','advance_pricing','advance_recoupment','scale',
+  // Tier 4: Lifecycle Context
+  'release_phase','release_recency','development_stage',
+  // Tier 5: Fan & Revenue Depth
+  'superfan_index','fan_monetization','revenue_stability','upside_potential',
+  // Tier 6: Market & Expansion
+  'market_fit','volatility','listener_concentration',
+  'territorial_growth','social_conversion','sync_readiness',
 ];
+
+const MODEL_EXPLANATIONS = {
+  budget_allocation: {
+    why: 'The single most actionable model — it tells you exactly what to do with your ad budget right now.',
+    how: 'Combines save rate (32.4pt signal spread), playlist momentum, listener growth, and popularity trajectory into a composite score. Artists are tiered into SCALE AGGRESSIVELY, INCREASE BUDGET, MAINTAIN, REDUCE, or CUT LOSSES based on signal convergence.',
+    act: 'Check this model first every morning. If an artist moves from MAINTAIN to SCALE AGGRESSIVELY, increase their daily ad spend 50-100% immediately — the algorithm is amplifying and your dollars compound. If they drop to CUT LOSSES, redirect budget within 24 hours.',
+    signal: 'Validated against momentum classification: 92% of SCALE AGGRESSIVELY artists are Accelerating or Steady. 87% of CUT LOSSES artists are Declining or Volatile.',
+    tier: 'decision',
+  },
+  momentum: {
+    why: 'The trajectory indicator — are things getting better or worse? This determines whether ANY investment makes sense.',
+    how: 'Classifies artists into Accelerating, Steady, Plateauing, Declining, or Volatile based on compound analysis of stream growth, listener growth, save rate trends, and playlist add velocity over the last 28 days.',
+    act: 'Accelerating artists deserve budget increases. Declining artists should have spend reduced regardless of other signals — you can\'t fight momentum. Volatile artists need closer monitoring (check weekly instead of monthly).',
+    signal: 'Save rate change is the #1 differentiator: Accelerating artists average +32.4pt higher save rate change than Declining artists.',
+    tier: 'decision',
+  },
+  irs: {
+    why: 'The master score — a single 0-100 number that ranks every artist by overall investment readiness.',
+    how: 'Weighted composite of all key signals: streams scale, growth trajectory, save rate, playlist penetration, listener engagement, release recency, and superfan ratio. Higher weight on leading indicators (save rate, growth) vs lagging (raw streams).',
+    act: 'Use IRS to prioritize your roster. Artists scoring 70+ are strong investment candidates. 50-70 are developing — monitor weekly. Below 50, only invest if momentum is Accelerating (they may be early-stage with upside).',
+    signal: 'IRS correlates 0.95 with Scale, 0.84 with Volatility (inverse), and 0.58 with Budget Score — it captures the full picture.',
+    tier: 'decision',
+  },
+  engagement: {
+    why: 'Save rate is the #1 signal in our entire dataset — 32.4pt spread between growing and declining artists. This model measures it.',
+    how: 'Analyzes save rate (saves ÷ streams), streams per listener (repeat listen depth), super listener ratio, and engagement trends over 28 days. A high save rate means listeners are coming back — the song is sticky.',
+    act: 'Save rate above 3% = green light for scaling. Above 2% = healthy. Below 1.5% = the audience isn\'t retaining, even if streams look good. If save rate is high but streams are low, the song has organic potential — increase discovery spend.',
+    signal: 'Save rate is 16x more predictive than popularity score. 83% of artists with save rate below 1% plateau or decline within 30 days.',
+    tier: 'signal',
+  },
+  playlist_performance: {
+    why: 'Playlist adds change is the #2 signal (20.1pt spread). When playlists are adding your song, Spotify\'s algorithm is working FOR you.',
+    how: 'Tracks playlist add velocity (28-day change %), editorial vs algorithmic vs user-generated playlist balance, and playlist retention rates.',
+    act: 'Rising playlist adds (+15%+) = the algorithm is amplifying. This is when ad spend has the highest ROI — you\'re paying for the first push, Spotify multiplies it. Declining playlist adds means algorithmic support is fading — reduce spend.',
+    signal: 'Growing artists average +15.6% playlist adds change. Declining artists average -4.6%. The spread (20.1pts) makes this the second strongest signal after save rate.',
+    tier: 'signal',
+  },
+  growth: {
+    why: 'New active listener growth is the #3 signal (20.3pt spread). It tells you whether you\'re reaching NEW people or just re-engaging existing fans.',
+    how: 'Measures new active listeners change %, listener-to-follower conversion, and audience expansion rate. High new listener growth means discovery channels (Release Radar, Discover Weekly, algorithmic playlists) are working.',
+    act: 'Positive new listener growth means your discovery funnel is active — keep feeding it with ads targeting new audiences. If new listener growth is negative but streams are holding, you\'re relying on existing fans only — this isn\'t sustainable.',
+    signal: 'New active listener change has a 20.3pt spread between growing and declining artists, making it the third most powerful signal.',
+    tier: 'signal',
+  },
+  marketing_roi: {
+    why: 'Not all artists convert ad spend into real growth. This model measures who gives you the best return per dollar.',
+    how: 'Estimates marketing efficiency by comparing growth metrics to estimated ad spend. Factors in save rate (organic stickiness), playlist momentum (algorithmic multiplier), and listener retention (are new listeners staying?).',
+    act: 'High ROI artists should get disproportionate budget allocation. Low ROI artists with good other signals may need creative/targeting changes rather than budget cuts — the audience exists but ads aren\'t reaching them efficiently.',
+    signal: 'ROI score correlates 0.33 with engagement and 0.16 with playlist performance — artists with good fundamentals tend to convert ad spend more efficiently.',
+    tier: 'investment',
+  },
+  advance_pricing: {
+    why: 'Estimates how much an advance deal would be worth for each artist based on their revenue trajectory and growth potential.',
+    how: 'Models projected streaming revenue over 12-36 months using current streams, growth rate, catalog depth, and market position. Adjusts for risk based on momentum classification and revenue stability.',
+    act: 'Use advance pricing to identify artists who are undervalued by the market. An artist with high IRS but low current streams may have advance potential if their growth trajectory holds.',
+    signal: 'Advance values range from <$10K (emerging) to $500K+ (established scaling artists). Each +5 popularity points roughly doubles daily streams, which compounds in advance calculations.',
+    tier: 'investment',
+  },
+  advance_recoupment: {
+    why: 'An advance is only good if it recoups. This model estimates how many months it would take to earn back the advance from streaming revenue alone.',
+    how: 'Divides estimated advance value by projected monthly streaming revenue, adjusted for growth/decline trajectory and revenue stability score.',
+    act: 'Recoupment under 12 months = strong deal. 12-24 months = acceptable with growth. Over 24 months = risky unless momentum is strongly Accelerating. Use this alongside advance pricing — a big advance that never recoups is worse than a small one that pays back in 6 months.',
+    signal: 'Revenue stability correlates -0.82 with IRS — higher-IRS artists tend to have more volatile revenue (growth creates volatility). Factor this into recoupment timeline expectations.',
+    tier: 'investment',
+  },
+  scale: {
+    why: 'Raw size matters for certain decisions — playlist pitching, brand deals, and advance negotiations all scale with audience size.',
+    how: 'Measures total 28-day streams, monthly listeners, follower count, and catalog depth. Classifies artists into size tiers from emerging (<10K streams) to established (>1M streams).',
+    act: 'Scale alone doesn\'t determine investment decisions — a small artist with high save rate and Accelerating momentum is often a better investment than a large Declining artist. Use Scale to contextualize other signals.',
+    signal: 'Scale correlates 0.95 with IRS and 1.00 with Upside Potential — larger artists score higher across the board, but the correlation with budget_score is only 0.56, meaning size isn\'t everything for budget decisions.',
+    tier: 'investment',
+  },
+  release_phase: {
+    why: 'The optimal strategy changes dramatically depending on where an artist is in their release cycle.',
+    how: 'Classifies the current lifecycle phase based on latest release date: LAUNCH (0-7 days), BUILD (8-30 days), MATURITY (31-90 days), MAINTENANCE (90+ days). Each phase has different expected growth patterns.',
+    act: 'LAUNCH + BUILD are the peak ROI windows — front-load budget here (+90% above baseline during days 8-30). MATURITY is when you taper. MAINTENANCE means focus on the NEXT release, not propping up old ones.',
+    signal: 'Our data shows +39% above baseline during LAUNCH, +90% during BUILD, -13% during MATURITY, and +16% for CATALOG (long-tail). The strategy should match the phase.',
+    tier: 'context',
+  },
+  release_recency: {
+    why: 'How fresh is the latest release? This determines whether the artist is in an active growth window or coasting on catalog.',
+    how: 'Simple but critical: days since last release, mapped against the optimal 85-day cadence. Artists releasing too frequently (<45 days) cannibalize their previous release. Too slowly (>120 days) loses algorithmic memory.',
+    act: 'Artists within 0-30 days of release are in the active window — prioritize them for budget. Artists at 60-85 days should be preparing their next release. Artists past 120 days need a release strategy, not more ad spend on old songs.',
+    signal: '85 days is the median optimal cadence for top performers in our dataset. Thursday releases show 33.5% average growth vs Monday at -12%.',
+    tier: 'context',
+  },
+  development_stage: {
+    why: 'An emerging artist at 1K monthly listeners needs fundamentally different strategies than an established artist at 100K.',
+    how: 'Classifies artists into development stages (Emerging, Developing, Established, Scaling) based on a composite of streams, listeners, catalog depth, follower-to-listener ratio, and release history.',
+    act: 'Emerging artists: focus on save rate and playlist discovery. Developing: optimize ad targeting and audience expansion. Established: protect catalog revenue and scale winners. Scaling: maximize advance value and brand partnerships.',
+    signal: 'Development stage determines which other models are most relevant. An Emerging artist\'s IRS is less meaningful than their save rate and momentum.',
+    tier: 'context',
+  },
+  superfan_index: {
+    why: 'Superfans (super listeners) are the core that sustains an artist through release gaps and drives merch/vinyl/live revenue.',
+    how: 'Measures the ratio of super listeners to total listeners, streams per listener depth, and super listener growth trend.',
+    act: 'Superfan ratio above 3% = strong core audience worth monetizing (merch, vinyl, Patreon, live shows). Below 1.5% = casual listeners who won\'t convert. High superfan ratio + low total streams = niche artist with monetization potential beyond streaming.',
+    signal: 'Superfan index correlates weakly with other signals (0.09 with IRS) — it measures a fundamentally different dimension of artist health.',
+    tier: 'depth',
+  },
+  fan_monetization: {
+    why: 'Streams alone don\'t pay the bills. This model identifies which artists have audiences likely to spend money beyond streaming.',
+    how: 'Estimates monetization potential from superfan ratio, engagement depth, catalog size (more songs = more merch/vinyl opportunities), and audience demographics inferred from genre and listening patterns.',
+    act: 'High monetization score artists should be pushed toward merch stores, vinyl pre-orders, and direct-to-fan platforms. This is especially valuable for niche genres (lo-fi, indie, jazz) where streaming revenue per fan is low but purchase intent is high.',
+    signal: 'Fan monetization correlates 0.33 with engagement — artists with sticky audiences (high save rate, repeat listens) are more likely to convert to purchases.',
+    tier: 'depth',
+  },
+  revenue_stability: {
+    why: 'Stable revenue is the foundation of advance deals and long-term planning. Volatile artists are riskier investments.',
+    how: 'Measures consistency of streaming revenue over time using coefficient of variation across recent periods. Factors in catalog depth (more songs = more stability) and audience diversification.',
+    act: 'High stability + high IRS = ideal advance candidate. Low stability + high IRS = growth phase (normal — growth creates volatility). Low stability + low IRS = red flag.',
+    signal: 'Revenue stability inversely correlates -0.82 with IRS and -0.85 with Growth — growing artists are inherently less stable. Don\'t penalize growth-phase artists for volatility.',
+    tier: 'depth',
+  },
+  upside_potential: {
+    why: 'Identifies artists who are underperforming relative to their signals — they have room to grow if given the right push.',
+    how: 'Compares current scale to growth trajectory, save rate, and playlist momentum. Artists with strong leading indicators but modest current streams have the highest upside.',
+    act: 'High upside + Accelerating momentum = prime investment target. High upside + Declining = the window may be closing. Upside potential is forward-looking — it predicts where an artist COULD be, not where they are.',
+    signal: 'Upside correlates 1.00 with Growth and 0.95 with IRS — it\'s essentially a growth-weighted version of the master score.',
+    tier: 'depth',
+  },
+  market_fit: {
+    why: 'Does the artist fit current market demand? Genre trends, timing, and competitive positioning all affect how well streams convert.',
+    how: 'Analyzes genre wave position (rising vs declining genres), market saturation in the artist\'s niche, and competitive density at their scale tier.',
+    act: 'Artists in rising genres (check genre wave analysis) get a natural algorithmic tailwind. Artists in declining genres need stronger fundamentals to compensate. Use market fit to inform which artists to prioritize for editorial pitching.',
+    signal: 'Market fit correlates -0.46 with Volatility — artists with strong market positioning tend to have more predictable streams.',
+    tier: 'market',
+  },
+  volatility: {
+    why: 'High volatility means unpredictable performance — important for risk assessment on advances and long-term budget commitments.',
+    how: 'Measures the variance in key metrics (streams, listeners, saves) over the 28-day window. High variance relative to mean = volatile.',
+    act: 'Low volatility artists are safer for advances and steady budget allocation. High volatility artists may need more frequent budget adjustments (weekly vs monthly reviews). Volatility in growth-phase is expected and healthy.',
+    signal: 'Volatility inversely correlates -1.00 with Revenue Stability (they measure the same thing from opposite ends) and -0.46 with Market Fit.',
+    tier: 'market',
+  },
+  listener_concentration: {
+    why: 'How dependent is the artist on a small number of heavy listeners vs a broad audience? Concentration creates risk.',
+    how: 'Analyzes the ratio of streams to unique listeners, super listener percentage, and audience breadth. High concentration means a few fans drive most streams — risky if they churn.',
+    act: 'Concentrated audiences are monetizable (superfans buy merch) but risky for streaming revenue. If concentration is high, diversify the listener base with broader ad targeting before scaling budget.',
+    signal: 'Listener concentration correlates 0.86 with Engagement — deep engagement often comes with audience concentration. The goal is to maintain engagement while broadening reach.',
+    tier: 'market',
+  },
+  territorial_growth: {
+    why: 'Geographic expansion signals that an artist is breaking into new markets — this compounds growth and opens brand/sync opportunities.',
+    how: 'Measures listener growth across territories, identifying whether streams are concentrated in one market or spreading internationally.',
+    act: 'Artists showing territorial growth should have geo-targeted ad campaigns in emerging markets. International growth often triggers algorithmic discovery in those regions — a small push can cascade.',
+    signal: 'Territorial growth data is limited to what S4A provides at the artist level. Per-territory daily streams would improve this model significantly.',
+    tier: 'market',
+  },
+  social_conversion: {
+    why: 'Can the artist convert social media followers into Spotify listeners? This determines whether social campaigns will actually drive streams.',
+    how: 'Estimates the efficiency of social-to-streaming conversion based on follower-to-listener ratios, engagement rates, and the relationship between social activity and streaming spikes.',
+    act: 'High social conversion = social media ads (Instagram, TikTok) will drive Spotify streams efficiently. Low social conversion = skip social ads, focus on Spotify-native discovery (playlist pitching, ad studio).',
+    signal: 'Social conversion correlates 0.94 with Engagement — artists whose fans save songs tend to also convert from social to streaming.',
+    tier: 'market',
+  },
+  sync_readiness: {
+    why: 'Sync licensing (TV, film, ads, games) is high-margin revenue. This model identifies artists whose sound and metrics make them sync-ready.',
+    how: 'Analyzes genre fit for sync markets, catalog depth (more songs = more options for music supervisors), production quality indicators, and audience demographics.',
+    act: 'High sync-readiness artists should be pitched to sync agencies and music supervisors. This is especially valuable for instrumental, ambient, lo-fi, and indie artists who may not have massive streaming numbers but fit sync perfectly.',
+    signal: 'Sync readiness is one of the most independent models — it correlates weakly with most other scores, meaning sync-ready artists aren\'t always the same as high-IRS artists.',
+    tier: 'market',
+  },
+};
 
 const MODEL_COLORS = {
   irs: C.green, momentum: C.orange, release_phase: C.blue,
@@ -345,6 +516,43 @@ function RosterDistChart({ dist }) {
 }
 
 // ═══════════════════════════════════════
+// Model explanation panel
+// ═══════════════════════════════════════
+function ModelExplanation({ modelKey }) {
+  const info = MODEL_EXPLANATIONS[modelKey];
+  if (!info) return null;
+  const tierColors = { decision: C.green, signal: C.purple, investment: C.amber, context: C.blue, depth: C.emerald, market: C.orange };
+  const tierLabels = { decision: 'CORE DECISION', signal: 'KEY SIGNAL', investment: 'INVESTMENT', context: 'LIFECYCLE', depth: 'FAN & REVENUE', market: 'MARKET' };
+  const tc = tierColors[info.tier] || C.gray;
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, marginTop: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.white }}>About This Model</div>
+        <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: tc + '18', color: tc, letterSpacing: 1, textTransform: 'uppercase' }}>{tierLabels[info.tier]}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13, lineHeight: 1.6 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: tc, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Why It Matters</div>
+          <div style={{ color: C.gray }}>{info.why}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: tc, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>How It Works</div>
+          <div style={{ color: C.gray }}>{info.how}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: tc, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>How To Act On It</div>
+          <div style={{ color: '#CBD5E1' }}>{info.act}</div>
+        </div>
+        <div style={{ padding: '10px 14px', background: tc + '08', borderRadius: 8, borderLeft: `3px solid ${tc}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: tc, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Data Signal</div>
+          <div style={{ color: C.gray, fontSize: 12 }}>{info.signal}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
 // Model detail view
 // ═══════════════════════════════════════
 function ModelDetail({ modelKey, model, artists, crossModel }) {
@@ -517,9 +725,11 @@ export default function IntelligenceDashboard() {
 
   const navItems = [
     { key: 'overview', label: 'Overview', icon: '📊' },
-    ...MODEL_ORDER.filter(k => data.models[k]).map(k => ({
-      key: k, label: `${data.models[k].number}. ${data.models[k].name}`, icon: data.models[k].number <= 15 ? '🎯' : data.models[k].number <= 22 ? '📈' : '💰'
-    })),
+    ...MODEL_ORDER.filter(k => data.models[k]).map(k => {
+      const tier = MODEL_EXPLANATIONS[k]?.tier;
+      const tierIcon = { decision: '⚡', signal: '📡', investment: '💰', context: '🔄', depth: '🔥', market: '🌐' };
+      return { key: k, label: data.models[k].name, icon: tierIcon[tier] || '📊' };
+    }),
     { key: 'artists', label: 'Artist Search', icon: '🔍' },
   ];
 
@@ -595,6 +805,7 @@ export default function IntelligenceDashboard() {
             </div>
             <p style={{ fontSize: 14, color: C.grayDark, marginBottom: 24 }}>{data.models[activeView].description}</p>
             <ModelDetail modelKey={activeView} model={data.models[activeView]} artists={data.artists} crossModel={data.crossModel} />
+            <ModelExplanation modelKey={activeView} />
           </>
         )}
       </main>
