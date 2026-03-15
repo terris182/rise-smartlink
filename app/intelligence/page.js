@@ -57,7 +57,7 @@ function StatsCard({ label, value, sub, color }) {
       padding: '16px 20px', flex: '1 1 140px', minWidth: 140 }}>
       <div style={{ fontSize: 11, color: C.grayDark, fontWeight: 600,
         textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 800, color: color || C.white }}>{value}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: color || C.white }}>{value ?? '—'}</div>
       {sub && <div style={{ fontSize: 11, color: C.gray, marginTop: 2 }}>{sub}</div>}
     </div>
   );
@@ -77,7 +77,7 @@ function Leaderboard({ items, color, label = 'Score' }) {
             <div style={{ color: i < 3 ? color : C.gray, fontWeight: i < 3 ? 700 : 400 }}>{i + 1}</div>
             <div style={{ color: C.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
             <div style={{ color: color, fontWeight: 600, textAlign: 'right' }}>
-              {typeof item.score === 'number' ? (item.score > 10000 ? `$${(item.score/1e6).toFixed(1)}M` : item.score.toFixed(1)) : item.score}
+              {item.score == null ? '—' : typeof item.score === 'number' ? (item.score > 10000 ? `$${(item.score/1e6).toFixed(1)}M` : item.score.toFixed(1)) : item.score}
             </div>
           </Fragment>
         ))}
@@ -89,18 +89,19 @@ function Leaderboard({ items, color, label = 'Score' }) {
 function HistogramChart({ histogram, color, title }) {
   if (!histogram || !histogram.bins || !histogram.bins.length) return null;
   const labels = histogram.bins.slice(0, -1).map((b, i) => {
-    const next = histogram.bins[i + 1];
+    if (b == null) return '—';
     if (b > 100000) return `${(b/1e6).toFixed(1)}M`;
     if (b > 1000) return `${(b/1e3).toFixed(0)}K`;
     return b.toFixed(1);
   });
+  const counts = (histogram.counts || []).map(c => c ?? 0);
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
       {title && <div style={{ fontSize: 14, fontWeight: 700, color: C.white, marginBottom: 12 }}>{title}</div>}
       <div style={{ height: 260 }}>
         <Bar data={{
           labels,
-          datasets: [{ data: histogram.counts, backgroundColor: color + '99',
+          datasets: [{ data: counts, backgroundColor: color + '99',
             borderColor: color, borderWidth: 1, borderRadius: 3 }]
         }} options={{
           responsive: true, maintainAspectRatio: false,
@@ -139,12 +140,13 @@ function PieChart({ data: pieData, colors, title }) {
 
 function SignalPowerChart({ signals }) {
   if (!signals || !signals.length) return null;
+  const validSignals = signals.filter(s => s.spread != null);
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
       <div style={{ fontSize: 14, fontWeight: 700, color: C.white, marginBottom: 16 }}>Signal Power Ranking</div>
       <div style={{ fontSize: 12, color: C.grayDark, marginBottom: 12 }}>Spread between growing vs declining artists (higher = stronger signal)</div>
-      {signals.map((s, i) => {
-        const maxSpread = Math.max(...signals.map(x => Math.abs(x.spread)));
+      {validSignals.map((s, i) => {
+        const maxSpread = Math.max(...validSignals.map(x => Math.abs(x.spread)));
         const pct = (Math.abs(s.spread) / maxSpread) * 100;
         const isPos = s.spread > 0;
         return (
@@ -190,9 +192,9 @@ function CorrelationMatrix({ matrix }) {
               <td style={{ padding: '2px 8px 2px 0', color: C.gray, fontWeight: 500, whiteSpace: 'nowrap', textAlign: 'right' }}>{row.replace(/_/g,' ')}</td>
               {values[ri].map((v, ci) => (
                 <td key={ci} style={{ padding: 1 }}>
-                  <div style={{ width: 28, height: 28, background: getColor(v), borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 8, color: Math.abs(v) > 0.3 ? C.white : C.grayDark, fontWeight: 600 }}>
-                    {ri === ci ? '' : v.toFixed(2)}
+                  <div style={{ width: 28, height: 28, background: v != null ? getColor(v) : C.grayDark + '22', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 8, color: v != null && Math.abs(v) > 0.3 ? C.white : C.grayDark, fontWeight: 600 }}>
+                    {ri === ci ? '' : v != null ? v.toFixed(2) : '—'}
                   </div>
                 </td>
               ))}
@@ -218,9 +220,9 @@ function PopularityMap({ popMap }) {
         <Bar data={{
           labels: popMap.map(p => p.range),
           datasets: [
-            { label: 'Median Daily Streams', data: popMap.map(p => p.median_daily),
+            { label: 'Median Daily Streams', data: popMap.map(p => p.median_daily ?? 0),
               backgroundColor: C.green + '99', borderColor: C.green, borderWidth: 1, borderRadius: 3, yAxisID: 'y' },
-            { label: 'Avg Save Rate', data: popMap.map(p => p.avg_save_rate * 100),
+            { label: 'Avg Save Rate', data: popMap.map(p => p.avg_save_rate != null ? p.avg_save_rate * 100 : 0),
               type: 'line', borderColor: C.purple, backgroundColor: C.purple + '20',
               pointBackgroundColor: C.purple, pointRadius: 4, yAxisID: 'y1', fill: true }
           ]
@@ -250,13 +252,13 @@ function SaveRateChart({ srData }) {
         <Bar data={{
           labels: srData.map(s => s.label),
           datasets: [
-            { label: 'Stream Growth %', data: srData.map(s => s.median_stream_growth),
-              backgroundColor: srData.map(s => s.median_stream_growth > 0 ? C.green + '99' : C.red + '99'),
-              borderColor: srData.map(s => s.median_stream_growth > 0 ? C.green : C.red),
+            { label: 'Stream Growth %', data: srData.map(s => s.median_stream_growth ?? 0),
+              backgroundColor: srData.map(s => (s.median_stream_growth ?? 0) > 0 ? C.green + '99' : C.red + '99'),
+              borderColor: srData.map(s => (s.median_stream_growth ?? 0) > 0 ? C.green : C.red),
               borderWidth: 1, borderRadius: 3 },
-            { label: 'Listener Growth %', data: srData.map(s => s.median_listener_growth),
-              backgroundColor: srData.map(s => s.median_listener_growth > 0 ? C.blue + '66' : C.amber + '66'),
-              borderColor: srData.map(s => s.median_listener_growth > 0 ? C.blue : C.amber),
+            { label: 'Listener Growth %', data: srData.map(s => s.median_listener_growth ?? 0),
+              backgroundColor: srData.map(s => (s.median_listener_growth ?? 0) > 0 ? C.blue + '66' : C.amber + '66'),
+              borderColor: srData.map(s => (s.median_listener_growth ?? 0) > 0 ? C.blue : C.amber),
               borderWidth: 1, borderRadius: 3 }
           ]
         }} options={{
@@ -283,7 +285,7 @@ function BudgetTierChart({ tiers }) {
         <div key={i} style={{ marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: tierColors[t.tier] || C.gray }}>{t.tier.replace(/_/g, ' ')}</span>
-            <span style={{ fontSize: 12, color: C.gray }}>{t.count} artists · Save rate: {(t.avg_save_rate * 100).toFixed(2)}%</span>
+            <span style={{ fontSize: 12, color: C.gray }}>{t.count} artists · Save rate: {t.avg_save_rate != null ? (t.avg_save_rate * 100).toFixed(2) : '—'}%</span>
           </div>
           <div style={{ display: 'flex', gap: 3, height: 20 }}>
             {Object.entries(t.momentum_dist || {}).map(([k, v]) => {
@@ -354,7 +356,7 @@ function ModelDetail({ modelKey, model, artists, crossModel }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {Object.entries(model.by_momentum || {}).map(([k, v]) => (
-            <StatsCard key={k} label={k} value={v.count} sub={`Avg save: ${(v.avg_save_rate*100).toFixed(2)}% · Pop: ${v.avg_popularity}`} color={
+            <StatsCard key={k} label={k} value={v.count} sub={`Avg save: ${v.avg_save_rate != null ? (v.avg_save_rate*100).toFixed(2) : '—'}% · Pop: ${v.avg_popularity ?? '—'}`} color={
               k === 'Accelerating' ? C.green : k === 'Steady' ? C.blue : k === 'Declining' ? C.red : k === 'Volatile' ? C.purple : C.amber} />
           ))}
         </div>
