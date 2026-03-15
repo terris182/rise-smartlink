@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createLink, getLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
+import { searchAppleMusicUrl } from '@/lib/itunes';
 
 /**
  * POST /api/create-link
@@ -73,6 +74,16 @@ export async function POST(request) {
 
     if (!title) title = 'Untitled';
     if (!artist) artist = '';
+
+    // Fallback: if Songlink didn't find Apple Music, try iTunes Search API
+    if (!appleMusicUrl && artist && title) {
+      try {
+        const itunesUrl = await searchAppleMusicUrl(artist, title);
+        if (itunesUrl) appleMusicUrl = itunesUrl;
+      } catch (err) {
+        console.error('[create-link] iTunes search error:', err.message);
+      }
+    }
 
     // Generate slug as artist-name/song-name
     let slug = body.slug;

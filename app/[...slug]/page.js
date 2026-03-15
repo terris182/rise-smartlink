@@ -1,6 +1,7 @@
 import { getLink, updateLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
+import { searchAppleMusicUrl } from '@/lib/itunes';
 import { notFound } from 'next/navigation';
 import SmartLinkClient from './SmartLinkClient';
 
@@ -54,6 +55,19 @@ async function resolveLink(slug) {
       }
     } catch (err) {
       console.error('[resolveLink] Songlink error:', err.message);
+    }
+  }
+
+  // Fallback: if Songlink didn't find Apple Music, try iTunes Search API
+  if (!link.appleMusicUrl && link.artist && link.title) {
+    try {
+      const itunesUrl = await searchAppleMusicUrl(link.artist, link.title);
+      if (itunesUrl) {
+        updates.appleMusicUrl = itunesUrl;
+        link.appleMusicUrl = itunesUrl;
+      }
+    } catch (err) {
+      console.error('[resolveLink] iTunes search error:', err.message);
     }
   }
 
