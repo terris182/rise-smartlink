@@ -116,12 +116,12 @@ export default function SmartLinkClient({ link }) {
 
       if (typeof window.fbq === 'function') {
         window.fbq('track', 'PageView', {}, { eventID: pageViewId });
-        window.fbq('trackCustom', 'SmartLinkVisit', customData, { eventID: visitId });
+        window.fbq('trackCustom', 'Hypeddit Smart Link Visit', customData, { eventID: visitId });
       }
 
       if (link.fbPixelId) {
         sendServerEvent({ eventName: 'PageView', eventId: pageViewId, link, customData });
-        sendServerEvent({ eventName: 'SmartLinkVisit', eventId: visitId, link, customData });
+        sendServerEvent({ eventName: 'Hypeddit Smart Link Visit', eventId: visitId, link, customData });
       }
     };
 
@@ -145,11 +145,11 @@ export default function SmartLinkClient({ link }) {
       };
 
       if (typeof window.fbq === 'function') {
-        window.fbq('trackCustom', 'SmartLinkClick', customData, { eventID: clickId });
+        window.fbq('trackCustom', 'Hypeddit Smart Link Click', customData, { eventID: clickId });
       }
 
       if (link.fbPixelId) {
-        sendServerEvent({ eventName: 'SmartLinkClick', eventId: clickId, link, customData });
+        sendServerEvent({ eventName: 'Hypeddit Smart Link Click', eventId: clickId, link, customData });
       }
 
       setTimeout(() => {
