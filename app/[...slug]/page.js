@@ -27,21 +27,35 @@ async function resolveLink(slug) {
 
   const updates = {};
 
-  // Auto-fetch cover art from Spotify oEmbed if missing
-  if (!link.coverUrl && link.spotifyUrl) {
+  // Auto-fetch cover art + artist from Spotify oEmbed if missing
+  if (link.spotifyUrl && (!link.coverUrl || !link.artist)) {
     const meta = await fetchSpotifyMeta(link.spotifyUrl);
-    if (meta?.thumbnailUrl) {
-      updates.coverUrl = meta.thumbnailUrl;
-      link.coverUrl = meta.thumbnailUrl;
+    if (meta) {
+      if (!link.coverUrl && meta.thumbnailUrl) {
+        updates.coverUrl = meta.thumbnailUrl;
+        link.coverUrl = meta.thumbnailUrl;
+      }
+      if (!link.artist && meta.artist) {
+        updates.artist = meta.artist;
+        link.artist = meta.artist;
+      }
+      if (!link.title && meta.title) {
+        updates.title = meta.title;
+        link.title = meta.title;
+      }
     }
   }
 
   // Auto-resolve Apple Music URL from Spotify via Songlink/Odesli if missing
   if (!link.appleMusicUrl && link.spotifyUrl) {
-    const crossLinks = await fetchCrossPlatformLinks(link.spotifyUrl);
-    if (crossLinks?.appleMusicUrl) {
-      updates.appleMusicUrl = crossLinks.appleMusicUrl;
-      link.appleMusicUrl = crossLinks.appleMusicUrl;
+    try {
+      const crossLinks = await fetchCrossPlatformLinks(link.spotifyUrl);
+      if (crossLinks?.appleMusicUrl) {
+        updates.appleMusicUrl = crossLinks.appleMusicUrl;
+        link.appleMusicUrl = crossLinks.appleMusicUrl;
+      }
+    } catch (err) {
+      console.error('[resolveLink] Songlink error:', err.message);
     }
   }
 

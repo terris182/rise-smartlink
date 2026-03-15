@@ -51,16 +51,7 @@ export async function POST(request) {
       if (meta) {
         if (!coverUrl) coverUrl = meta.thumbnailUrl;
         if (!title) title = meta.title || '';
-      }
-    }
-
-    // Parse title from oEmbed format: "Track Name - Artist Name" or "Track Name"
-    if (title && !artist) {
-      const parts = title.split(' - ');
-      if (parts.length >= 2) {
-        // oEmbed returns "Title - Artist" for tracks
-        title = parts[0].trim();
-        artist = parts.slice(1).join(' - ').trim();
+        if (!artist) artist = meta.artist || '';
       }
     }
 

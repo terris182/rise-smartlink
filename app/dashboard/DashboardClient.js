@@ -1,17 +1,46 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 // ─── Views ───
 const VIEWS = { OVERVIEW: 'overview', STATS: 'stats', EDIT: 'edit', CREATE: 'create' };
 
 export default function DashboardClient() {
+  const [authed, setAuthed] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
   const [view, setView] = useState(VIEWS.OVERVIEW);
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlug, setSelectedSlug] = useState(null);
   const [statsData, setStatsData] = useState(null);
   const [totals, setTotals] = useState({ visits: 0, clicks: 0 });
+
+  // Check if already authenticated (cookie exists and is valid)
+  useEffect(() => {
+    fetch('/api/analytics')
+      .then((res) => {
+        if (res.ok) setAuthed(true);
+        setAuthChecking(false);
+      })
+      .catch(() => setAuthChecking(false));
+  }, []);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (res.ok) {
+      setAuthed(true);
+    } else {
+      setAuthError('Wrong password');
+    }
+  };
 
   // Fetch overview data
   const fetchOverview = useCallback(async () => {
@@ -30,8 +59,8 @@ export default function DashboardClient() {
   }, []);
 
   useEffect(() => {
-    fetchOverview();
-  }, [fetchOverview]);
+    if (authed) fetchOverview();
+  }, [authed, fetchOverview]);
 
   // Open stats for a slug
   const openStats = async (slug) => {
@@ -65,6 +94,25 @@ export default function DashboardClient() {
 
   return (
     <div style={styles.page}>
+      {/* Login gate */}
+      {!authed ? (
+        <div style={styles.loginContainer}>
+          <h1 style={{ ...styles.title, textAlign: 'center', marginBottom: '8px' }}>GudMuzik</h1>
+          <p style={{ color: '#888', textAlign: 'center', marginBottom: '24px', fontSize: '14px' }}>Enter password to access the dashboard</p>
+          <form onSubmit={handleLogin} style={styles.loginForm}>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              style={styles.formInput}
+              autoFocus
+            />
+            <button type="submit" style={styles.createBtn}>Log In</button>
+            {authError && <p style={{ color: '#ef4444', fontSize: '13px', margin: '8px 0 0' }}>{authError}</p>}
+          </form>
+        </div>
+      ) : (
       <div style={styles.container}>
         {/* Header */}
         <div style={styles.header}>
@@ -100,6 +148,7 @@ export default function DashboardClient() {
         {view === VIEWS.EDIT && <EditView slug={selectedSlug} onDone={goBack} />}
         {view === VIEWS.CREATE && <CreateView onDone={goBack} />}
       </div>
+      )}
     </div>
   );
 }
@@ -186,21 +235,51 @@ function StatsView({ slug, data }) {
   if (!data) return <p style={styles.muted}>Loading stats for /{slug}...</p>;
 
   const { link, analytics } = data;
-  const { visits, clicks, platforms, countries, clickCountries, devices, os, daily } = analytics;
+  const { visits, clicks, platforms, countriesVisits, countriesClicks, devices, os, daily } = analytics;
   const ctr = visits > 0 ? ((clicks / visits) * 100).toFixed(1) : '0.0';
 
-  // Sort daily by date
-  const dailyEntries = Object.entries(daily || {}).sort((a, b) => a[0].localeCompare(b[0]));
+  // Build 30-day array (fill gaps with zeros) for the chart
+  const dailyArray = [];
+  const now = new Date();
+  for (let i = 29; i >= 0; i--) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split('T')[0];
+    const d = daily?.[dateStr] || {};
+    dailyArray.push({
+      date: dateStr,
+      label: `${date.getMonth() + 1}/${date.getDate()}`,
+      visits: d.visits || 0,
+      clicks: d.clicks || 0,
+      platforms: d.platforms || {},
+    });
+  }
 
-  // Sort countries by count descending
-  const countryEntries = Object.entries(countries || {}).sort((a, b) => b[1] - a[1]);
+  // Platform CTR (clicks per platform / total visits)
   const platformEntries = Object.entries(platforms || {}).sort((a, b) => b[1] - a[1]);
+
+  // Country CTR — merge visits and clicks per country
+  const allCountries = new Set([
+    ...Object.keys(countriesVisits || {}),
+    ...Object.keys(countriesClicks || {}),
+  ]);
+  const countryData = Array.from(allCountries)
+    .map((c) => ({
+      country: c,
+      visits: countriesVisits?.[c] || 0,
+      clicks: countriesClicks?.[c] || 0,
+      ctr: (countriesVisits?.[c] || 0) > 0
+        ? (((countriesClicks?.[c] || 0) / countriesVisits[c]) * 100).toFixed(1)
+        : '0.0',
+    }))
+    .sort((a, b) => b.visits - a.visits);
+
   const deviceEntries = Object.entries(devices || {}).sort((a, b) => b[1] - a[1]);
   const osEntries = Object.entries(os || {}).sort((a, b) => b[1] - a[1]);
 
-  // Find max daily value for chart scaling
-  const maxDaily = dailyEntries.reduce(
-    (max, [, d]) => Math.max(max, d.visits || 0, d.clicks || 0),
+  // Max daily value for chart scaling
+  const maxDaily = dailyArray.reduce(
+    (max, d) => Math.max(max, d.visits, d.clicks),
     1
   );
 
@@ -209,11 +288,7 @@ function StatsView({ slug, data }) {
       {/* Link header */}
       <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '24px' }}>
         {link.coverUrl && (
-          <img
-            src={link.coverUrl}
-            alt=""
-            style={{ width: '80px', height: '80px', borderRadius: '8px', objectFit: 'cover' }}
-          />
+          <img src={link.coverUrl} alt="" style={{ width: '80px', height: '80px', borderRadius: '8px', objectFit: 'cover' }} />
         )}
         <div>
           <h2 style={{ color: '#fff', margin: 0, fontSize: '20px' }}>{link.title}</h2>
@@ -223,7 +298,7 @@ function StatsView({ slug, data }) {
         </div>
       </div>
 
-      {/* Summary */}
+      {/* Summary cards */}
       <div style={styles.cardRow}>
         <div style={styles.card}>
           <span style={styles.cardLabel}>Visits</span>
@@ -239,119 +314,108 @@ function StatsView({ slug, data }) {
         </div>
       </div>
 
-      {/* Daily chart */}
-      {dailyEntries.length > 0 && (
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>Daily Activity (Last 30 Days)</h3>
-          <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end', height: '120px' }}>
-            {dailyEntries.map(([date, d]) => (
+      {/* ── Daily Chart (Hypeddit style) ── */}
+      <div style={styles.section}>
+        <h3 style={styles.sectionTitle}>Daily Activity (Last 30 Days)</h3>
+        {/* Y-axis labels + bars */}
+        <div style={{ position: 'relative', height: '160px', marginBottom: '4px' }}>
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((frac) => (
+            <div key={frac} style={{ position: 'absolute', left: 0, right: 0, bottom: `${frac * 100}%`, borderBottom: '1px solid #1e1e1e' }}>
+              <span style={{ position: 'absolute', left: '-40px', bottom: '-6px', fontSize: '10px', color: '#555', width: '35px', textAlign: 'right' }}>
+                {Math.round(maxDaily * frac)}
+              </span>
+            </div>
+          ))}
+          {/* Bars */}
+          <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end', height: '100%', marginLeft: '0' }}>
+            {dailyArray.map((d) => (
               <div
-                key={date}
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  height: '100%',
-                  justifyContent: 'flex-end',
-                  position: 'relative',
-                }}
-                title={`${date}\nVisits: ${d.visits}\nClicks: ${d.clicks}`}
+                key={d.date}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end', position: 'relative' }}
+                title={`${d.date}\nVisits: ${d.visits}\nClicks: ${d.clicks}\nCTR: ${d.visits > 0 ? ((d.clicks / d.visits) * 100).toFixed(1) : 0}%`}
               >
-                <div
-                  style={{
-                    width: '100%',
-                    maxWidth: '20px',
-                    background: '#3b82f6',
-                    borderRadius: '2px 2px 0 0',
-                    height: `${((d.visits || 0) / maxDaily) * 100}%`,
-                    minHeight: d.visits ? '2px' : 0,
-                    position: 'relative',
-                  }}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      background: '#10b981',
-                      borderRadius: '2px 2px 0 0',
-                      height: `${((d.clicks || 0) / Math.max(d.visits || 1, 1)) * 100}%`,
-                      minHeight: d.clicks ? '2px' : 0,
-                    }}
-                  />
+                {/* Visit bar (full height) */}
+                <div style={{ width: '100%', maxWidth: '18px', background: '#1e3a5f', borderRadius: '2px 2px 0 0', height: `${(d.visits / maxDaily) * 100}%`, minHeight: d.visits ? '2px' : 0, position: 'relative' }}>
+                  {/* Click bar overlaid on visit bar */}
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: '#3b82f6', borderRadius: '2px 2px 0 0', height: `${d.visits > 0 ? (d.clicks / d.visits) * 100 : 0}%`, minHeight: d.clicks ? '2px' : 0 }} />
                 </div>
               </div>
             ))}
           </div>
-          <div
-            style={{
-              display: 'flex',
-              gap: '16px',
-              marginTop: '8px',
-              fontSize: '12px',
-              color: '#888',
-            }}
-          >
-            <span>
-              <span style={{ display: 'inline-block', width: 10, height: 10, background: '#3b82f6', borderRadius: 2, marginRight: 4 }} />
-              Visits
-            </span>
-            <span>
-              <span style={{ display: 'inline-block', width: 10, height: 10, background: '#10b981', borderRadius: 2, marginRight: 4 }} />
-              Clicks
-            </span>
+        </div>
+        {/* Date labels */}
+        <div style={{ display: 'flex', gap: '2px' }}>
+          {dailyArray.map((d, i) => (
+            <div key={d.date} style={{ flex: 1, textAlign: 'center', fontSize: '9px', color: '#555' }}>
+              {i % 5 === 0 ? d.label : ''}
+            </div>
+          ))}
+        </div>
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: '16px', marginTop: '12px', fontSize: '12px', color: '#888' }}>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#1e3a5f', borderRadius: 2, marginRight: 4 }} />Visits</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#3b82f6', borderRadius: 2, marginRight: 4 }} />Clicks</span>
+        </div>
+      </div>
+
+      {/* ── Platform CTR ── */}
+      {platformEntries.length > 0 && (
+        <div style={styles.section}>
+          <h3 style={styles.sectionTitle}>Clicks by Button</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '100px 80px 80px 80px 1fr', gap: '4px', fontSize: '13px' }}>
+            <span style={{ color: '#666', fontWeight: 600 }}>Platform</span>
+            <span style={{ color: '#666', fontWeight: 600, textAlign: 'right' }}>Clicks</span>
+            <span style={{ color: '#666', fontWeight: 600, textAlign: 'right' }}>% of Clicks</span>
+            <span style={{ color: '#666', fontWeight: 600, textAlign: 'right' }}>CTR</span>
+            <span />
+            {platformEntries.map(([platform, count]) => {
+              const pctClicks = clicks > 0 ? ((count / clicks) * 100).toFixed(1) : '0.0';
+              const platCtr = visits > 0 ? ((count / visits) * 100).toFixed(1) : '0.0';
+              const color = platform === 'spotify' ? '#1DB954' : platform === 'apple_music' ? '#FA243C' : '#3b82f6';
+              return (
+                <React.Fragment key={platform}>
+                  <span style={{ color: '#ccc' }}>{formatPlatform(platform)}</span>
+                  <span style={{ color: '#fff', textAlign: 'right', fontWeight: 600 }}>{count.toLocaleString()}</span>
+                  <span style={{ color: '#aaa', textAlign: 'right' }}>{pctClicks}%</span>
+                  <span style={{ color: '#aaa', textAlign: 'right' }}>{platCtr}%</span>
+                  <div style={styles.barBg}>
+                    <div style={{ ...styles.barFill, width: `${(count / Math.max(clicks, 1)) * 100}%`, background: color }} />
+                  </div>
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Breakdown grids */}
+      {/* ── Country CTR ── */}
+      {countryData.length > 0 && (
+        <div style={styles.section}>
+          <h3 style={styles.sectionTitle}>Performance by Country</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '80px 80px 80px 70px 1fr', gap: '4px', fontSize: '13px' }}>
+            <span style={{ color: '#666', fontWeight: 600 }}>Country</span>
+            <span style={{ color: '#666', fontWeight: 600, textAlign: 'right' }}>Visits</span>
+            <span style={{ color: '#666', fontWeight: 600, textAlign: 'right' }}>Clicks</span>
+            <span style={{ color: '#666', fontWeight: 600, textAlign: 'right' }}>CTR</span>
+            <span />
+            {countryData.slice(0, 20).map((c) => (
+              <React.Fragment key={c.country}>
+                <span style={{ color: '#ccc' }}>{c.country}</span>
+                <span style={{ color: '#fff', textAlign: 'right', fontWeight: 600 }}>{c.visits.toLocaleString()}</span>
+                <span style={{ color: '#aaa', textAlign: 'right' }}>{c.clicks.toLocaleString()}</span>
+                <span style={{ color: parseFloat(c.ctr) >= 20 ? '#10b981' : parseFloat(c.ctr) >= 10 ? '#eab308' : '#ef4444', textAlign: 'right', fontWeight: 600 }}>{c.ctr}%</span>
+                <div style={styles.barBg}>
+                  <div style={{ ...styles.barFill, width: `${(c.visits / Math.max(visits, 1)) * 100}%` }} />
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Devices & OS ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        {/* Platform clicks */}
-        {platformEntries.length > 0 && (
-          <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>Clicks by Platform</h3>
-            {platformEntries.map(([platform, count]) => (
-              <div key={platform} style={styles.breakdownRow}>
-                <span style={styles.breakdownLabel}>{formatPlatform(platform)}</span>
-                <span style={styles.breakdownValue}>{count.toLocaleString()}</span>
-                <div style={styles.barBg}>
-                  <div
-                    style={{
-                      ...styles.barFill,
-                      width: `${(count / clicks) * 100}%`,
-                      background: platform === 'spotify' ? '#1DB954' : '#FA243C',
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Countries */}
-        {countryEntries.length > 0 && (
-          <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>Visits by Country</h3>
-            {countryEntries.slice(0, 15).map(([country, count]) => (
-              <div key={country} style={styles.breakdownRow}>
-                <span style={styles.breakdownLabel}>{country}</span>
-                <span style={styles.breakdownValue}>{count.toLocaleString()}</span>
-                <div style={styles.barBg}>
-                  <div
-                    style={{
-                      ...styles.barFill,
-                      width: `${(count / visits) * 100}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Devices */}
         {deviceEntries.length > 0 && (
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>Devices</h3>
@@ -359,12 +423,13 @@ function StatsView({ slug, data }) {
               <div key={device} style={styles.breakdownRow}>
                 <span style={styles.breakdownLabel}>{device}</span>
                 <span style={styles.breakdownValue}>{count.toLocaleString()}</span>
+                <div style={styles.barBg}>
+                  <div style={{ ...styles.barFill, width: `${(count / visits) * 100}%` }} />
+                </div>
               </div>
             ))}
           </div>
         )}
-
-        {/* OS */}
         {osEntries.length > 0 && (
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>Operating Systems</h3>
@@ -372,6 +437,9 @@ function StatsView({ slug, data }) {
               <div key={name} style={styles.breakdownRow}>
                 <span style={styles.breakdownLabel}>{name}</span>
                 <span style={styles.breakdownValue}>{count.toLocaleString()}</span>
+                <div style={styles.barBg}>
+                  <div style={{ ...styles.barFill, width: `${(count / visits) * 100}%` }} />
+                </div>
               </div>
             ))}
           </div>
@@ -654,6 +722,17 @@ const styles = {
     background: '#0a0a0a',
     color: '#e5e5e5',
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
+  loginContainer: {
+    maxWidth: '360px',
+    margin: '0 auto',
+    paddingTop: '20vh',
+    padding: '20vh 24px 0',
+  },
+  loginForm: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
   },
   container: {
     maxWidth: '1100px',
