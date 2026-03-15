@@ -22,10 +22,52 @@ function getCookie(name) {
   return match ? decodeURIComponent(match[2]) : null;
 }
 
+/**
+ * Get or generate fbc (Click ID) for Facebook CAPI matching.
+ * Priority: 1) _fbc cookie (set by pixel), 2) construct from fbclid URL param.
+ * Format: fb.{subdomainIndex}.{creationTime}.{fbclid}
+ */
+function getFbc() {
+  const cookie = getCookie('_fbc');
+  if (cookie) return cookie;
+
+  // Construct from fbclid URL parameter if present (user arrived via FB ad)
+  if (typeof window === 'undefined') return null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fbclid = params.get('fbclid');
+    if (fbclid) {
+      const fbc = `fb.1.${Date.now()}.${fbclid}`;
+      // Persist as cookie so subsequent events on same session use it
+      document.cookie = `_fbc=${fbc};max-age=7776000;path=/;SameSite=Lax`;
+      return fbc;
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Get or generate fbp (Browser ID) for Facebook CAPI matching.
+ * Priority: 1) _fbp cookie (set by pixel), 2) generate our own.
+ * Format: fb.1.{creationTime}.{random10digits}
+ */
+function getFbp() {
+  const cookie = getCookie('_fbp');
+  if (cookie) return cookie;
+
+  if (typeof window === 'undefined') return null;
+  // Generate a browser ID matching Facebook's format
+  const random = Math.floor(1000000000 + Math.random() * 9000000000);
+  const fbp = `fb.1.${Date.now()}.${random}`;
+  // Persist as cookie so all events in this session share the same fbp
+  document.cookie = `_fbp=${fbp};max-age=7776000;path=/;SameSite=Lax`;
+  return fbp;
+}
+
 async function sendServerEvent({ eventName, eventId, link, customData = {} }) {
   try {
-    const fbc = getCookie('_fbc');
-    const fbp = getCookie('_fbp');
+    const fbc = getFbc();
+    const fbp = getFbp();
     await fetch('/api/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
