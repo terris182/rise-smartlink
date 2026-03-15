@@ -1,14 +1,14 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import {
-  Chart as ChartJS, CategoryScale, LinearScale, BarElement,
-  ArcElement, PointElement, LineElement, Title, Tooltip, Legend, Filler
+  Chart as ChartJS, CategoryScale, LinearScale, BarElement, BarController,
+  ArcElement, PointElement, LineElement, LineController, Title, Tooltip, Legend, Filler
 } from 'chart.js';
 import { Bar, Doughnut, Scatter, Line } from 'react-chartjs-2';
 
 ChartJS.register(
-  CategoryScale, LinearScale, BarElement, ArcElement,
-  PointElement, LineElement, Title, Tooltip, Legend, Filler
+  CategoryScale, LinearScale, BarElement, BarController,
+  ArcElement, PointElement, LineElement, LineController, Title, Tooltip, Legend, Filler
 );
 
 // ═══════════════════════════════════════
