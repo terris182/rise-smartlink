@@ -26,36 +26,48 @@ async function resolveLink(slug) {
   if (!link) return null;
 
   const updates = {};
+  const needsArtist = !link.artist;
+  const needsAppleMusic = !link.appleMusicUrl;
+  const needsCover = !link.coverUrl;
+  const needsTitle = !link.title;
 
-  // Auto-fetch cover art + artist from Spotify oEmbed if missing
-  if (link.spotifyUrl && (!link.coverUrl || !link.artist)) {
-    const meta = await fetchSpotifyMeta(link.spotifyUrl);
-    if (meta) {
-      if (!link.coverUrl && meta.thumbnailUrl) {
-        updates.coverUrl = meta.thumbnailUrl;
-        link.coverUrl = meta.thumbnailUrl;
-      }
-      if (!link.artist && meta.artist) {
-        updates.artist = meta.artist;
-        link.artist = meta.artist;
-      }
-      if (!link.title && meta.title) {
-        updates.title = meta.title;
-        link.title = meta.title;
-      }
-    }
-  }
-
-  // Auto-resolve Apple Music URL from Spotify via Songlink/Odesli if missing
-  if (!link.appleMusicUrl && link.spotifyUrl) {
+  // Use Songlink/Odesli API as the primary resolver — it provides:
+  // - Artist name (more reliable than Spotify oEmbed which often omits author_name)
+  // - Apple Music URL (cross-platform link resolution)
+  // - Title (fallback)
+  if (link.spotifyUrl && (needsArtist || needsAppleMusic || needsTitle)) {
     try {
       const crossLinks = await fetchCrossPlatformLinks(link.spotifyUrl);
-      if (crossLinks?.appleMusicUrl) {
-        updates.appleMusicUrl = crossLinks.appleMusicUrl;
-        link.appleMusicUrl = crossLinks.appleMusicUrl;
+      if (crossLinks) {
+        if (needsArtist && crossLinks.artistName) {
+          updates.artist = crossLinks.artistName;
+          link.artist = crossLinks.artistName;
+        }
+        if (needsTitle && crossLinks.title) {
+          updates.title = crossLinks.title;
+          link.title = crossLinks.title;
+        }
+        if (needsAppleMusic && crossLinks.appleMusicUrl) {
+          updates.appleMusicUrl = crossLinks.appleMusicUrl;
+          link.appleMusicUrl = crossLinks.appleMusicUrl;
+        }
       }
     } catch (err) {
       console.error('[resolveLink] Songlink error:', err.message);
+    }
+  }
+
+  // Fallback: fetch cover art from Spotify oEmbed if still missing
+  if (needsCover && link.spotifyUrl) {
+    const meta = await fetchSpotifyMeta(link.spotifyUrl);
+    if (meta?.thumbnailUrl) {
+      updates.coverUrl = meta.thumbnailUrl;
+      link.coverUrl = meta.thumbnailUrl;
+    }
+    // Also grab artist from oEmbed as last resort (works for some tracks)
+    if (!link.artist && meta?.artist) {
+      updates.artist = meta.artist;
+      link.artist = meta.artist;
     }
   }
 

@@ -44,9 +44,25 @@ export async function POST(request) {
       );
     }
 
-    // Auto-fetch metadata from Spotify oEmbed
+    // Auto-fetch metadata from Spotify oEmbed (cover art) and Songlink (artist, Apple Music)
     let { title, artist, coverUrl, appleMusicUrl } = body;
-    if (!title || !artist || !coverUrl) {
+
+    // Songlink/Odesli: most reliable source for artist name, title, and Apple Music URL
+    if (!artist || !title || !appleMusicUrl) {
+      try {
+        const crossLinks = await fetchCrossPlatformLinks(body.spotifyUrl);
+        if (crossLinks) {
+          if (!artist && crossLinks.artistName) artist = crossLinks.artistName;
+          if (!title && crossLinks.title) title = crossLinks.title;
+          if (!appleMusicUrl && crossLinks.appleMusicUrl) appleMusicUrl = crossLinks.appleMusicUrl;
+        }
+      } catch (err) {
+        console.error('[create-link] Songlink error:', err.message);
+      }
+    }
+
+    // Spotify oEmbed: reliable for cover art (and fallback for title/artist)
+    if (!coverUrl || !title || !artist) {
       const meta = await fetchSpotifyMeta(body.spotifyUrl);
       if (meta) {
         if (!coverUrl) coverUrl = meta.thumbnailUrl;
@@ -57,14 +73,6 @@ export async function POST(request) {
 
     if (!title) title = 'Untitled';
     if (!artist) artist = '';
-
-    // Auto-resolve Apple Music URL via Songlink/Odesli API if not provided
-    if (!appleMusicUrl && body.spotifyUrl) {
-      const crossLinks = await fetchCrossPlatformLinks(body.spotifyUrl);
-      if (crossLinks?.appleMusicUrl) {
-        appleMusicUrl = crossLinks.appleMusicUrl;
-      }
-    }
 
     // Generate slug as artist-name/song-name
     let slug = body.slug;
