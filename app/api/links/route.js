@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getAllLinks, getLink, updateLink, createLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
+import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
+import { resolveAppleMusicByIsrc } from '@/lib/isrc-resolver';
 
 export const dynamic = 'force-dynamic';
 

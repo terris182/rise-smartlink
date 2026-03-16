@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createLink, getLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
+import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
+import { resolveAppleMusicByIsrc } from '@/lib/isrc-resolver';
 
 /**
  * POST /api/create-link
@@ -82,6 +84,27 @@ export async function POST(request) {
         if (itunesUrl) appleMusicUrl = itunesUrl;
       } catch (err) {
         console.error('[create-link] iTunes search error:', err.message);
+      }
+    }
+
+    // Fallback: ISRC-based resolution via Spotify Web API → Deezer → Songlink/iTunes/Apple Media
+    if (!appleMusicUrl && body.spotifyUrl) {
+      try {
+        const spotifyMeta = await fetchSpotifyTrackMeta(body.spotifyUrl);
+        if (spotifyMeta?.isrc) {
+          console.log(`[create-link] Got ISRC ${spotifyMeta.isrc} — trying ISRC-based resolution`);
+          const isrcUrl = await resolveAppleMusicByIsrc(
+            spotifyMeta.isrc,
+            artist || spotifyMeta.artist,
+            title || spotifyMeta.title
+          );
+          if (isrcUrl) appleMusicUrl = isrcUrl;
+          // Fill in artist/title from Spotify API if still missing
+          if (!artist && spotifyMeta.artist) artist = spotifyMeta.artist;
+          if (!title && spotifyMeta.title) title = spotifyMeta.title;
+        }
+      } catch (err) {
+        console.error('[create-link] ISRC resolution error:', err.message);
       }
     }
 
