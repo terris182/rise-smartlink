@@ -458,6 +458,7 @@ function formatPlatform(key) {
 function EditView({ slug, onDone }) {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -474,19 +475,32 @@ function EditView({ slug, onDone }) {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    setMessage('');
+  const handleSave = async (opts = {}) => {
+    const isResolve = opts.resolve || false;
+    if (isResolve) {
+      setResolving(true);
+      setMessage('Resolving links...');
+    } else {
+      setSaving(true);
+      setMessage('');
+    }
     try {
+      const payload = { ...form };
+      if (isResolve) {
+        payload.resolve = true;
+        // Clear appleMusicUrl so the resolver tries to fill it
+        if (!form.appleMusicUrl) payload.appleMusicUrl = '';
+      }
       const res = await fetch('/api/links', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        setMessage('Saved successfully!');
-        setTimeout(onDone, 1000);
+        // Update form with resolved data from server so user sees what changed
+        setForm((prev) => ({ ...prev, ...data.link }));
+        setMessage(isResolve ? 'Resolved!' : 'Saved!');
       } else {
         setMessage(`Error: ${data.error}`);
       }
@@ -494,6 +508,7 @@ function EditView({ slug, onDone }) {
       setMessage(`Error: ${err.message}`);
     }
     setSaving(false);
+    setResolving(false);
   };
 
   if (!form) return <p style={styles.muted}>Loading...</p>;
@@ -527,6 +542,7 @@ function EditView({ slug, onDone }) {
           value={form.appleMusicUrl}
           onChange={(v) => handleChange('appleMusicUrl', v)}
           placeholder="Auto-resolved from Spotify if blank"
+          statusColor={form.appleMusicUrl ? '#10b981' : '#ef4444'}
         />
         <FormField label="Genre" value={form.genre} onChange={(v) => handleChange('genre', v)} />
         <FormField
@@ -548,9 +564,16 @@ function EditView({ slug, onDone }) {
         />
       </div>
 
-      <div style={{ marginTop: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-        <button style={styles.saveBtn} onClick={handleSave} disabled={saving}>
+      <div style={{ marginTop: '20px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <button style={styles.saveBtn} onClick={() => handleSave()} disabled={saving || resolving}>
           {saving ? 'Saving...' : 'Save Changes'}
+        </button>
+        <button
+          style={{ ...styles.createBtn, background: '#8b5cf6' }}
+          onClick={() => handleSave({ resolve: true })}
+          disabled={saving || resolving}
+        >
+          {resolving ? 'Resolving...' : 'Re-resolve Links'}
         </button>
         <button style={styles.backBtn} onClick={onDone}>
           Cancel
@@ -591,7 +614,7 @@ function CreateView({ onDone }) {
       return;
     }
     setCreating(true);
-    setMessage('');
+    setMessage('Resolving links...');
     try {
       const res = await fetch('/api/create-link', {
         method: 'POST',
@@ -600,6 +623,15 @@ function CreateView({ onDone }) {
       });
       const data = await res.json();
       if (data.success) {
+        // Update form with all resolved fields so user can see what was auto-fetched
+        const link = data.link;
+        setForm((prev) => ({
+          ...prev,
+          title: link.title || prev.title,
+          artist: link.artist || prev.artist,
+          appleMusicUrl: link.appleMusicUrl || prev.appleMusicUrl,
+          slug: link.slug || prev.slug,
+        }));
         setMessage('Link created!');
         setCreatedUrl(data.url);
       } else {
@@ -686,11 +718,24 @@ function CreateView({ onDone }) {
 
       {createdUrl && (
         <div style={styles.successBox}>
-          <p style={{ margin: 0, color: '#fff' }}>Your smart link is live:</p>
+          <p style={{ margin: 0, color: '#fff', fontWeight: 600 }}>Your smart link is live:</p>
           <a href={createdUrl} target="_blank" rel="noopener" style={styles.successLink}>
             {createdUrl}
           </a>
-          <button style={{ ...styles.smallBtn, marginTop: '8px' }} onClick={onDone}>
+          {/* Show what was resolved */}
+          <div style={{ marginTop: '12px', fontSize: '13px', color: '#aaa', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {form.title && <span>Title: <strong style={{ color: '#fff' }}>{form.title}</strong></span>}
+            {form.artist && <span>Artist: <strong style={{ color: '#fff' }}>{form.artist}</strong></span>}
+            <span>
+              Apple Music:{' '}
+              {form.appleMusicUrl ? (
+                <strong style={{ color: '#10b981' }}>{form.appleMusicUrl.length > 60 ? form.appleMusicUrl.slice(0, 60) + '...' : form.appleMusicUrl}</strong>
+              ) : (
+                <strong style={{ color: '#ef4444' }}>Not found</strong>
+              )}
+            </span>
+          </div>
+          <button style={{ ...styles.smallBtn, marginTop: '12px' }} onClick={onDone}>
             Back to Dashboard
           </button>
         </div>
@@ -700,16 +745,24 @@ function CreateView({ onDone }) {
 }
 
 // ─── Form Field Component ───
-function FormField({ label, value, onChange, placeholder = '' }) {
+function FormField({ label, value, onChange, placeholder = '', statusColor }) {
   return (
     <div style={styles.formField}>
-      <label style={styles.formLabel}>{label}</label>
+      <label style={styles.formLabel}>
+        {label}
+        {statusColor && (
+          <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: statusColor, marginLeft: 6, verticalAlign: 'middle' }} />
+        )}
+      </label>
       <input
         type="text"
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        style={styles.formInput}
+        style={{
+          ...styles.formInput,
+          ...(statusColor && value ? { borderColor: statusColor + '44' } : {}),
+        }}
       />
     </div>
   );

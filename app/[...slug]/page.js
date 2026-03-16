@@ -3,7 +3,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
-import { resolveAppleMusicByIsrc } from '@/lib/isrc-resolver';
+import { resolveAppleMusicByIsrc, appleMediaSearch } from '@/lib/isrc-resolver';
 import { notFound } from 'next/navigation';
 import SmartLinkClient from './SmartLinkClient';
 
@@ -70,6 +70,19 @@ async function resolveLink(slug) {
       }
     } catch (err) {
       console.error('[resolveLink] iTunes search error:', err.message);
+    }
+  }
+
+  // Fallback: Apple Media Services search (Apple's own endpoint, better indexing than iTunes Search)
+  if (!link.appleMusicUrl && link.artist && link.title) {
+    try {
+      const appleUrl = await appleMediaSearch(link.artist, link.title);
+      if (appleUrl) {
+        updates.appleMusicUrl = appleUrl;
+        link.appleMusicUrl = appleUrl;
+      }
+    } catch (err) {
+      console.error('[resolveLink] Apple Media Services error:', err.message);
     }
   }
 

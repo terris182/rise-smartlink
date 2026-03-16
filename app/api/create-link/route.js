@@ -4,7 +4,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
-import { resolveAppleMusicByIsrc } from '@/lib/isrc-resolver';
+import { resolveAppleMusicByIsrc, appleMediaSearch } from '@/lib/isrc-resolver';
 
 /**
  * POST /api/create-link
@@ -84,6 +84,16 @@ export async function POST(request) {
         if (itunesUrl) appleMusicUrl = itunesUrl;
       } catch (err) {
         console.error('[create-link] iTunes search error:', err.message);
+      }
+    }
+
+    // Fallback: Apple Media Services search (better indexing than iTunes Search, no auth needed)
+    if (!appleMusicUrl && artist && title) {
+      try {
+        const appleUrl = await appleMediaSearch(artist, title);
+        if (appleUrl) appleMusicUrl = appleUrl;
+      } catch (err) {
+        console.error('[create-link] Apple Media Services error:', err.message);
       }
     }
 
