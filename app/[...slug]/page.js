@@ -3,7 +3,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
-import { resolveAppleMusicByIsrc, appleMediaSearch } from '@/lib/isrc-resolver';
+import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch } from '@/lib/isrc-resolver';
 import { notFound } from 'next/navigation';
 import SmartLinkClient from './SmartLinkClient';
 
@@ -73,26 +73,47 @@ async function resolveLink(slug) {
     }
   }
 
-  // Fallback: Apple Media Services search (Apple's own endpoint, better indexing than iTunes Search)
+  // Fallback: Deezer text search → get ISRC → Apple Music AMP API / Songlink
+  // Deezer indexes tracks faster than iTunes Search and returns ISRCs for free
   if (!link.appleMusicUrl && link.artist && link.title) {
     try {
-      const appleUrl = await appleMediaSearch(link.artist, link.title);
-      if (appleUrl) {
-        updates.appleMusicUrl = appleUrl;
-        link.appleMusicUrl = appleUrl;
+      const deezerResult = await deezerSearch(link.artist, link.title);
+      if (deezerResult?.isrc) {
+        console.log(`[resolveLink] Deezer found ISRC ${deezerResult.isrc} — trying ISRC-based resolution`);
+        const isrcUrl = await resolveAppleMusicByIsrc(
+          deezerResult.isrc,
+          link.artist,
+          link.title
+        );
+        if (isrcUrl) {
+          updates.appleMusicUrl = isrcUrl;
+          link.appleMusicUrl = isrcUrl;
+        }
       }
     } catch (err) {
-      console.error('[resolveLink] Apple Media Services error:', err.message);
+      console.error('[resolveLink] Deezer/ISRC error:', err.message);
     }
   }
 
-  // Fallback: ISRC-based resolution via Spotify Web API → Deezer → Songlink/iTunes/Apple Media
-  // This catches tracks that both Songlink and iTunes Search miss
+  // Fallback: Apple Music AMP API text search (if token available, no ISRC needed)
+  if (!link.appleMusicUrl && link.artist && link.title) {
+    try {
+      const ampUrl = await appleMusicAmpSearch(link.artist, link.title);
+      if (ampUrl) {
+        updates.appleMusicUrl = ampUrl;
+        link.appleMusicUrl = ampUrl;
+      }
+    } catch (err) {
+      console.error('[resolveLink] Apple AMP search error:', err.message);
+    }
+  }
+
+  // Fallback: Spotify Web API → ISRC → Apple Music resolution
   if (!link.appleMusicUrl && link.spotifyUrl) {
     try {
       const spotifyMeta = await fetchSpotifyTrackMeta(link.spotifyUrl);
       if (spotifyMeta?.isrc) {
-        console.log(`[resolveLink] Got ISRC ${spotifyMeta.isrc} — trying ISRC-based resolution`);
+        console.log(`[resolveLink] Spotify ISRC ${spotifyMeta.isrc} — trying resolution`);
         const isrcUrl = await resolveAppleMusicByIsrc(
           spotifyMeta.isrc,
           link.artist || spotifyMeta.artist,
@@ -102,7 +123,6 @@ async function resolveLink(slug) {
           updates.appleMusicUrl = isrcUrl;
           link.appleMusicUrl = isrcUrl;
         }
-        // Also fill in artist/title from Spotify API if still missing
         if (!link.artist && spotifyMeta.artist) {
           updates.artist = spotifyMeta.artist;
           link.artist = spotifyMeta.artist;
@@ -113,7 +133,7 @@ async function resolveLink(slug) {
         }
       }
     } catch (err) {
-      console.error('[resolveLink] ISRC resolution error:', err.message);
+      console.error('[resolveLink] Spotify ISRC error:', err.message);
     }
   }
 

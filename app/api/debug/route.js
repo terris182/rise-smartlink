@@ -3,14 +3,10 @@ import { searchAppleMusicUrl } from '@/lib/itunes';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
-import { resolveAppleMusicByIsrc, appleMediaSearch } from '@/lib/isrc-resolver';
+import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch, appleMusicIsrcLookup } from '@/lib/isrc-resolver';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * GET /api/debug?spotifyUrl=...
- * Tests the full resolution chain and returns results from each step.
- */
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const spotifyUrl = searchParams.get('spotifyUrl') || 'https://open.spotify.com/track/4XohrQVxLoX7l1dRWeywag';
@@ -21,78 +17,74 @@ export async function GET(request) {
 
   // Step 1: Songlink
   try {
-    const songlink = await fetchCrossPlatformLinks(spotifyUrl);
-    results.songlink = songlink;
+    results.songlink = await fetchCrossPlatformLinks(spotifyUrl);
   } catch (err) {
     results.songlinkError = err.message;
   }
 
-  // Use Songlink artist/title as defaults
   const resolvedArtist = artist || results.songlink?.artistName || '';
   const resolvedTitle = title || results.songlink?.title || '';
   results.resolvedArtist = resolvedArtist;
   results.resolvedTitle = resolvedTitle;
 
-  // Step 2: iTunes Search (multi-strategy)
+  // Step 2: iTunes Search
   try {
-    const itunesUrl = await searchAppleMusicUrl(resolvedArtist, resolvedTitle);
-    results.itunesMatchedUrl = itunesUrl;
+    results.itunesUrl = await searchAppleMusicUrl(resolvedArtist, resolvedTitle);
   } catch (err) {
     results.itunesError = err.message;
   }
 
-  // Step 3: Apple Media Services (standalone — no ISRC needed)
-  if (resolvedArtist && resolvedTitle) {
+  // Step 3: Deezer text search
+  try {
+    results.deezerSearch = await deezerSearch(resolvedArtist, resolvedTitle);
+  } catch (err) {
+    results.deezerError = err.message;
+  }
+
+  // Step 4: Apple Music AMP API text search
+  results.appleAmpEnv = { hasToken: !!process.env.APPLE_MUSIC_TOKEN };
+  try {
+    results.appleAmpUrl = await appleMusicAmpSearch(resolvedArtist, resolvedTitle);
+  } catch (err) {
+    results.appleAmpError = err.message;
+  }
+
+  // Step 5: Apple Music AMP API by ISRC (if Deezer gave us one)
+  const isrc = results.deezerSearch?.isrc;
+  if (isrc) {
+    results.isrc = isrc;
     try {
-      const appleUrl = await appleMediaSearch(resolvedArtist, resolvedTitle);
-      results.appleMediaUrl = appleUrl;
+      results.appleAmpIsrcUrl = await appleMusicIsrcLookup(isrc);
     } catch (err) {
-      results.appleMediaError = err.message;
+      results.appleAmpIsrcError = err.message;
     }
   }
 
-  // Step 4: Spotify Web API (ISRC) — show env var status for debugging
-  results.spotifyEnvStatus = {
+  // Step 6: Spotify Web API
+  results.spotifyEnv = {
     hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
     hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
     clientIdPrefix: process.env.SPOTIFY_CLIENT_ID ? process.env.SPOTIFY_CLIENT_ID.slice(0, 6) + '...' : 'missing',
   };
   try {
-    const spotifyMeta = await fetchSpotifyTrackMeta(spotifyUrl);
-    results.spotifyApi = spotifyMeta;
+    results.spotifyApi = await fetchSpotifyTrackMeta(spotifyUrl);
   } catch (err) {
     results.spotifyApiError = err.message;
-    results.spotifyApiStack = err.stack?.split('\n').slice(0, 3);
   }
 
-  // Step 5: ISRC-based resolution (Deezer → Songlink, iTunes ISRC, Apple Media)
-  if (results.spotifyApi?.isrc) {
-    try {
-      const isrcUrl = await resolveAppleMusicByIsrc(
-        results.spotifyApi.isrc,
-        resolvedArtist || results.spotifyApi.artist,
-        resolvedTitle || results.spotifyApi.title
-      );
-      results.isrcResolvedUrl = isrcUrl;
-    } catch (err) {
-      results.isrcError = err.message;
-    }
-  }
-
-  // Step 6: Spotify oEmbed (cover art)
+  // Step 7: Spotify oEmbed
   try {
-    const meta = await fetchSpotifyMeta(spotifyUrl);
-    results.spotifyOembed = meta;
+    results.spotifyOembed = await fetchSpotifyMeta(spotifyUrl);
   } catch (err) {
     results.spotifyOembedError = err.message;
   }
 
-  // Summary: which method would have resolved Apple Music?
+  // Summary
   results.finalAppleMusicUrl =
     results.songlink?.appleMusicUrl ||
-    results.itunesMatchedUrl ||
-    results.appleMediaUrl ||
-    results.isrcResolvedUrl ||
+    results.itunesUrl ||
+    results.appleAmpIsrcUrl ||
+    results.appleAmpUrl ||
     null;
 
   return NextResponse.json(results);

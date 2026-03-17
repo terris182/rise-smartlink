@@ -4,7 +4,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
-import { resolveAppleMusicByIsrc, appleMediaSearch } from '@/lib/isrc-resolver';
+import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch } from '@/lib/isrc-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,20 +70,36 @@ async function resolveFields(link, updates) {
     }
   }
 
-  // Apple Media Services
+  // Deezer text search → ISRC → Apple Music
   if (!merged.appleMusicUrl && merged.artist && merged.title) {
     try {
-      const appleUrl = await appleMediaSearch(merged.artist, merged.title);
-      if (appleUrl) {
-        resolvedUpdates.appleMusicUrl = appleUrl;
-        merged.appleMusicUrl = appleUrl;
+      const deezerResult = await deezerSearch(merged.artist, merged.title);
+      if (deezerResult?.isrc) {
+        const isrcUrl = await resolveAppleMusicByIsrc(deezerResult.isrc, merged.artist, merged.title);
+        if (isrcUrl) {
+          resolvedUpdates.appleMusicUrl = isrcUrl;
+          merged.appleMusicUrl = isrcUrl;
+        }
       }
     } catch (err) {
-      console.error('[resolveFields] Apple Media error:', err.message);
+      console.error('[resolveFields] Deezer/ISRC error:', err.message);
     }
   }
 
-  // ISRC-based resolution
+  // Apple Music AMP API text search
+  if (!merged.appleMusicUrl && merged.artist && merged.title) {
+    try {
+      const ampUrl = await appleMusicAmpSearch(merged.artist, merged.title);
+      if (ampUrl) {
+        resolvedUpdates.appleMusicUrl = ampUrl;
+        merged.appleMusicUrl = ampUrl;
+      }
+    } catch (err) {
+      console.error('[resolveFields] Apple AMP error:', err.message);
+    }
+  }
+
+  // Spotify Web API → ISRC
   if (!merged.appleMusicUrl && spotifyUrl) {
     try {
       const spotifyMeta = await fetchSpotifyTrackMeta(spotifyUrl);
@@ -97,15 +113,11 @@ async function resolveFields(link, updates) {
           resolvedUpdates.appleMusicUrl = isrcUrl;
           merged.appleMusicUrl = isrcUrl;
         }
-        if (!merged.artist && spotifyMeta.artist) {
-          resolvedUpdates.artist = spotifyMeta.artist;
-        }
-        if (!merged.title && spotifyMeta.title) {
-          resolvedUpdates.title = spotifyMeta.title;
-        }
+        if (!merged.artist && spotifyMeta.artist) resolvedUpdates.artist = spotifyMeta.artist;
+        if (!merged.title && spotifyMeta.title) resolvedUpdates.title = spotifyMeta.title;
       }
     } catch (err) {
-      console.error('[resolveFields] ISRC error:', err.message);
+      console.error('[resolveFields] Spotify ISRC error:', err.message);
     }
   }
 
