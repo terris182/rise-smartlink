@@ -3,7 +3,7 @@ import { searchAppleMusicUrl } from '@/lib/itunes';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
-import { resolveAppleMusicByIsrc } from '@/lib/isrc-resolver';
+import { resolveAppleMusicByIsrc, appleMediaSearch } from '@/lib/isrc-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,15 +41,31 @@ export async function GET(request) {
     results.itunesError = err.message;
   }
 
-  // Step 3: Spotify Web API (ISRC)
+  // Step 3: Apple Media Services (standalone — no ISRC needed)
+  if (resolvedArtist && resolvedTitle) {
+    try {
+      const appleUrl = await appleMediaSearch(resolvedArtist, resolvedTitle);
+      results.appleMediaUrl = appleUrl;
+    } catch (err) {
+      results.appleMediaError = err.message;
+    }
+  }
+
+  // Step 4: Spotify Web API (ISRC) — show env var status for debugging
+  results.spotifyEnvStatus = {
+    hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
+    hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
+    clientIdPrefix: process.env.SPOTIFY_CLIENT_ID ? process.env.SPOTIFY_CLIENT_ID.slice(0, 6) + '...' : 'missing',
+  };
   try {
     const spotifyMeta = await fetchSpotifyTrackMeta(spotifyUrl);
     results.spotifyApi = spotifyMeta;
   } catch (err) {
     results.spotifyApiError = err.message;
+    results.spotifyApiStack = err.stack?.split('\n').slice(0, 3);
   }
 
-  // Step 4: ISRC-based resolution (Deezer → Songlink, iTunes ISRC, Apple Media)
+  // Step 5: ISRC-based resolution (Deezer → Songlink, iTunes ISRC, Apple Media)
   if (results.spotifyApi?.isrc) {
     try {
       const isrcUrl = await resolveAppleMusicByIsrc(
@@ -63,7 +79,7 @@ export async function GET(request) {
     }
   }
 
-  // Step 5: Spotify oEmbed (cover art)
+  // Step 6: Spotify oEmbed (cover art)
   try {
     const meta = await fetchSpotifyMeta(spotifyUrl);
     results.spotifyOembed = meta;
@@ -75,6 +91,7 @@ export async function GET(request) {
   results.finalAppleMusicUrl =
     results.songlink?.appleMusicUrl ||
     results.itunesMatchedUrl ||
+    results.appleMediaUrl ||
     results.isrcResolvedUrl ||
     null;
 
