@@ -16,12 +16,35 @@ export async function GET(request) {
   const results = { spotifyUrl };
 
   // Step 1: Spotify Web API (run FIRST to get artist/title/ISRC)
+  const basicToken = process.env.SPOTIFY_BASIC_TOKEN;
   results.spotifyEnv = {
-    hasBasicToken: !!process.env.SPOTIFY_BASIC_TOKEN,
-    basicTokenPrefix: process.env.SPOTIFY_BASIC_TOKEN ? process.env.SPOTIFY_BASIC_TOKEN.slice(0, 8) + '...' : 'missing',
+    hasBasicToken: !!basicToken,
+    basicTokenPrefix: basicToken ? basicToken.slice(0, 8) + '...' : 'missing',
     hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
     hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
   };
+
+  // Direct token exchange test to surface the exact error
+  if (basicToken) {
+    try {
+      const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${basicToken}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'grant_type=client_credentials',
+      });
+      const tokenBody = await tokenRes.text();
+      results.spotifyTokenTest = {
+        status: tokenRes.status,
+        response: tokenBody.length > 200 ? tokenBody.slice(0, 200) + '...' : tokenBody,
+      };
+    } catch (err) {
+      results.spotifyTokenTest = { error: err.message };
+    }
+  }
+
   try {
     results.spotifyApi = await fetchSpotifyTrackMeta(spotifyUrl);
   } catch (err) {
