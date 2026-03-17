@@ -239,16 +239,19 @@ function StatsView({ slug, data }) {
   const ctr = visits > 0 ? ((clicks / visits) * 100).toFixed(1) : '0.0';
 
   // Build 30-day array (fill gaps with zeros) for the chart
+  // Use PST dates to match how analytics data is bucketed server-side
   const dailyArray = [];
   const now = new Date();
   for (let i = 29; i >= 0; i--) {
     const date = new Date(now);
     date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+    // Parse back for display label
+    const [y, m, day] = dateStr.split('-');
     const d = daily?.[dateStr] || {};
     dailyArray.push({
       date: dateStr,
-      label: `${date.getMonth() + 1}/${date.getDate()}`,
+      label: `${parseInt(m)}/${parseInt(day)}`,
       visits: d.visits || 0,
       clicks: d.clicks || 0,
       platforms: d.platforms || {},
