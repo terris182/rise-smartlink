@@ -15,52 +15,7 @@ export async function GET(request) {
 
   const results = { spotifyUrl };
 
-  // Step 1: Songlink
-  try {
-    results.songlink = await fetchCrossPlatformLinks(spotifyUrl);
-  } catch (err) {
-    results.songlinkError = err.message;
-  }
-
-  const resolvedArtist = artist || results.songlink?.artistName || '';
-  const resolvedTitle = title || results.songlink?.title || '';
-  results.resolvedArtist = resolvedArtist;
-  results.resolvedTitle = resolvedTitle;
-
-  // Step 2: iTunes Search
-  try {
-    results.itunesUrl = await searchAppleMusicUrl(resolvedArtist, resolvedTitle);
-  } catch (err) {
-    results.itunesError = err.message;
-  }
-
-  // Step 3: Deezer text search
-  try {
-    results.deezerSearch = await deezerSearch(resolvedArtist, resolvedTitle);
-  } catch (err) {
-    results.deezerError = err.message;
-  }
-
-  // Step 4: Apple Music AMP API text search
-  results.appleAmpEnv = { hasToken: !!process.env.APPLE_MUSIC_TOKEN };
-  try {
-    results.appleAmpUrl = await appleMusicAmpSearch(resolvedArtist, resolvedTitle);
-  } catch (err) {
-    results.appleAmpError = err.message;
-  }
-
-  // Step 5: Apple Music AMP API by ISRC (if Deezer gave us one)
-  const isrc = results.deezerSearch?.isrc;
-  if (isrc) {
-    results.isrc = isrc;
-    try {
-      results.appleAmpIsrcUrl = await appleMusicIsrcLookup(isrc);
-    } catch (err) {
-      results.appleAmpIsrcError = err.message;
-    }
-  }
-
-  // Step 6: Spotify Web API
+  // Step 1: Spotify Web API (run FIRST to get artist/title/ISRC)
   results.spotifyEnv = {
     hasBasicToken: !!process.env.SPOTIFY_BASIC_TOKEN,
     basicTokenPrefix: process.env.SPOTIFY_BASIC_TOKEN ? process.env.SPOTIFY_BASIC_TOKEN.slice(0, 8) + '...' : 'missing',
@@ -73,11 +28,71 @@ export async function GET(request) {
     results.spotifyApiError = err.message;
   }
 
-  // Step 7: Spotify oEmbed
+  // Step 2: Spotify oEmbed (backup for title/artist)
   try {
     results.spotifyOembed = await fetchSpotifyMeta(spotifyUrl);
   } catch (err) {
     results.spotifyOembedError = err.message;
+  }
+
+  // Step 3: Songlink
+  try {
+    results.songlink = await fetchCrossPlatformLinks(spotifyUrl);
+  } catch (err) {
+    results.songlinkError = err.message;
+  }
+
+  // Resolve artist/title from best available source
+  const resolvedArtist = artist
+    || results.spotifyApi?.artist
+    || results.songlink?.artistName
+    || results.spotifyOembed?.artist
+    || '';
+  const resolvedTitle = title
+    || results.spotifyApi?.title
+    || results.songlink?.title
+    || results.spotifyOembed?.title
+    || '';
+  const isrc = results.spotifyApi?.isrc || null;
+
+  results.resolvedArtist = resolvedArtist;
+  results.resolvedTitle = resolvedTitle;
+  results.isrc = isrc;
+
+  // Step 4: iTunes Search
+  try {
+    results.itunesUrl = await searchAppleMusicUrl(resolvedArtist, resolvedTitle);
+  } catch (err) {
+    results.itunesError = err.message;
+  }
+
+  // Step 5: Deezer text search
+  try {
+    results.deezerSearch = await deezerSearch(resolvedArtist, resolvedTitle);
+  } catch (err) {
+    results.deezerError = err.message;
+  }
+
+  // Step 6: Apple Music AMP API text search
+  results.appleAmpEnv = {
+    hasToken: !!process.env.APPLE_MUSIC_TOKEN,
+    tokenPrefix: process.env.APPLE_MUSIC_TOKEN ? process.env.APPLE_MUSIC_TOKEN.slice(0, 20) + '...' : 'missing',
+  };
+  try {
+    results.appleAmpUrl = await appleMusicAmpSearch(resolvedArtist, resolvedTitle);
+  } catch (err) {
+    results.appleAmpError = err.message;
+  }
+
+  // Step 7: Apple Music AMP API by ISRC
+  const resolvedIsrc = isrc || results.deezerSearch?.isrc;
+  if (resolvedIsrc) {
+    results.resolvedIsrc = resolvedIsrc;
+    try {
+      results.appleAmpIsrcUrl = await appleMusicIsrcLookup(resolvedIsrc);
+    } catch (err) {
+      results.appleAmpIsrcError = err.message;
+    }
   }
 
   // Summary

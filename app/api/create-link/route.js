@@ -47,10 +47,11 @@ export async function POST(request) {
       );
     }
 
-    // Auto-fetch metadata from Spotify oEmbed (cover art) and Songlink (artist, Apple Music)
+    // Auto-fetch metadata from multiple sources, in priority order
     let { title, artist, coverUrl, appleMusicUrl } = body;
+    let spotifyIsrc = null;
 
-    // Songlink/Odesli: most reliable source for artist name, title, and Apple Music URL
+    // ── Step 1: Songlink (primary — gives Apple Music URL directly) ──
     if (!artist || !title || !appleMusicUrl) {
       try {
         const crossLinks = await fetchCrossPlatformLinks(body.spotifyUrl);
@@ -64,7 +65,22 @@ export async function POST(request) {
       }
     }
 
-    // Spotify oEmbed: reliable for cover art (and fallback for title/artist)
+    // ── Step 2: Spotify Web API (early — provides artist/title/ISRC) ──
+    if (!artist || !title || !appleMusicUrl) {
+      try {
+        const spotifyMeta = await fetchSpotifyTrackMeta(body.spotifyUrl);
+        if (spotifyMeta) {
+          spotifyIsrc = spotifyMeta.isrc;
+          if (!artist && spotifyMeta.artist) artist = spotifyMeta.artist;
+          if (!title && spotifyMeta.title) title = spotifyMeta.title;
+          console.log(`[create-link] Spotify API: "${spotifyMeta.title}" by ${spotifyMeta.artist}, ISRC: ${spotifyMeta.isrc}`);
+        }
+      } catch (err) {
+        console.error('[create-link] Spotify API error:', err.message);
+      }
+    }
+
+    // ── Step 3: Spotify oEmbed (cover art + backup title/artist) ──
     if (!coverUrl || !title || !artist) {
       const meta = await fetchSpotifyMeta(body.spotifyUrl);
       if (meta) {
@@ -77,7 +93,7 @@ export async function POST(request) {
     if (!title) title = 'Untitled';
     if (!artist) artist = '';
 
-    // Fallback: if Songlink didn't find Apple Music, try iTunes Search API
+    // ── Step 4: iTunes Search ──
     if (!appleMusicUrl && artist && title) {
       try {
         const itunesUrl = await searchAppleMusicUrl(artist, title);
@@ -87,45 +103,33 @@ export async function POST(request) {
       }
     }
 
-    // Fallback: Deezer text search → ISRC → Apple Music
-    if (!appleMusicUrl && artist && title) {
+    // ── Step 5: ISRC-based resolution ──
+    if (!appleMusicUrl && (spotifyIsrc || (artist && title))) {
       try {
-        const deezerResult = await deezerSearch(artist, title);
-        if (deezerResult?.isrc) {
-          const isrcUrl = await resolveAppleMusicByIsrc(deezerResult.isrc, artist, title);
+        let isrc = spotifyIsrc;
+        if (!isrc && artist && title) {
+          const deezerResult = await deezerSearch(artist, title);
+          if (deezerResult?.isrc) {
+            isrc = deezerResult.isrc;
+            console.log(`[create-link] Deezer found ISRC: ${isrc}`);
+          }
+        }
+        if (isrc) {
+          const isrcUrl = await resolveAppleMusicByIsrc(isrc, artist, title);
           if (isrcUrl) appleMusicUrl = isrcUrl;
         }
       } catch (err) {
-        console.error('[create-link] Deezer/ISRC error:', err.message);
+        console.error('[create-link] ISRC resolution error:', err.message);
       }
     }
 
-    // Fallback: Apple Music AMP API text search
+    // ── Step 6: Apple Music AMP text search (last resort) ──
     if (!appleMusicUrl && artist && title) {
       try {
         const ampUrl = await appleMusicAmpSearch(artist, title);
         if (ampUrl) appleMusicUrl = ampUrl;
       } catch (err) {
         console.error('[create-link] Apple AMP error:', err.message);
-      }
-    }
-
-    // Fallback: Spotify Web API → ISRC
-    if (!appleMusicUrl && body.spotifyUrl) {
-      try {
-        const spotifyMeta = await fetchSpotifyTrackMeta(body.spotifyUrl);
-        if (spotifyMeta?.isrc) {
-          const isrcUrl = await resolveAppleMusicByIsrc(
-            spotifyMeta.isrc,
-            artist || spotifyMeta.artist,
-            title || spotifyMeta.title
-          );
-          if (isrcUrl) appleMusicUrl = isrcUrl;
-          if (!artist && spotifyMeta.artist) artist = spotifyMeta.artist;
-          if (!title && spotifyMeta.title) title = spotifyMeta.title;
-        }
-      } catch (err) {
-        console.error('[create-link] Spotify ISRC error:', err.message);
       }
     }
 

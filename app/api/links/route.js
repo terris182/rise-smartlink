@@ -34,7 +34,7 @@ async function resolveFields(link, updates) {
   const merged = { ...link, ...updates };
   const resolvedUpdates = {};
 
-  // Songlink: artist, title, Apple Music
+  // ── Step 1: Songlink ──
   if (spotifyUrl && (!merged.artist || !merged.title || !merged.appleMusicUrl)) {
     try {
       const crossLinks = await fetchCrossPlatformLinks(spotifyUrl);
@@ -57,7 +57,43 @@ async function resolveFields(link, updates) {
     }
   }
 
-  // iTunes Search (multi-strategy)
+  // ── Step 2: Spotify Web API (early — provides artist/title/ISRC) ──
+  let spotifyIsrc = null;
+  if (spotifyUrl && (!merged.artist || !merged.title || !merged.appleMusicUrl)) {
+    try {
+      const spotifyMeta = await fetchSpotifyTrackMeta(spotifyUrl);
+      if (spotifyMeta) {
+        spotifyIsrc = spotifyMeta.isrc;
+        if (!merged.artist && spotifyMeta.artist) {
+          resolvedUpdates.artist = spotifyMeta.artist;
+          merged.artist = spotifyMeta.artist;
+        }
+        if (!merged.title && spotifyMeta.title) {
+          resolvedUpdates.title = spotifyMeta.title;
+          merged.title = spotifyMeta.title;
+        }
+        console.log(`[resolveFields] Spotify API: "${spotifyMeta.title}" by ${spotifyMeta.artist}, ISRC: ${spotifyMeta.isrc}`);
+      }
+    } catch (err) {
+      console.error('[resolveFields] Spotify API error:', err.message);
+    }
+  }
+
+  // ── Step 3: Cover art from Spotify oEmbed ──
+  if ((!merged.coverUrl || !merged.artist) && spotifyUrl) {
+    try {
+      const meta = await fetchSpotifyMeta(spotifyUrl);
+      if (meta?.thumbnailUrl && !merged.coverUrl) resolvedUpdates.coverUrl = meta.thumbnailUrl;
+      if (!merged.artist && meta?.artist) {
+        resolvedUpdates.artist = meta.artist;
+        merged.artist = meta.artist;
+      }
+    } catch (err) {
+      console.error('[resolveFields] Spotify oEmbed error:', err.message);
+    }
+  }
+
+  // ── Step 4: iTunes Search ──
   if (!merged.appleMusicUrl && merged.artist && merged.title) {
     try {
       const itunesUrl = await searchAppleMusicUrl(merged.artist, merged.title);
@@ -70,23 +106,30 @@ async function resolveFields(link, updates) {
     }
   }
 
-  // Deezer text search → ISRC → Apple Music
-  if (!merged.appleMusicUrl && merged.artist && merged.title) {
+  // ── Step 5: ISRC-based resolution ──
+  if (!merged.appleMusicUrl && (spotifyIsrc || (merged.artist && merged.title))) {
     try {
-      const deezerResult = await deezerSearch(merged.artist, merged.title);
-      if (deezerResult?.isrc) {
-        const isrcUrl = await resolveAppleMusicByIsrc(deezerResult.isrc, merged.artist, merged.title);
+      let isrc = spotifyIsrc;
+      if (!isrc && merged.artist && merged.title) {
+        const deezerResult = await deezerSearch(merged.artist, merged.title);
+        if (deezerResult?.isrc) {
+          isrc = deezerResult.isrc;
+          console.log(`[resolveFields] Deezer found ISRC: ${isrc}`);
+        }
+      }
+      if (isrc) {
+        const isrcUrl = await resolveAppleMusicByIsrc(isrc, merged.artist, merged.title);
         if (isrcUrl) {
           resolvedUpdates.appleMusicUrl = isrcUrl;
           merged.appleMusicUrl = isrcUrl;
         }
       }
     } catch (err) {
-      console.error('[resolveFields] Deezer/ISRC error:', err.message);
+      console.error('[resolveFields] ISRC resolution error:', err.message);
     }
   }
 
-  // Apple Music AMP API text search
+  // ── Step 6: Apple Music AMP text search ──
   if (!merged.appleMusicUrl && merged.artist && merged.title) {
     try {
       const ampUrl = await appleMusicAmpSearch(merged.artist, merged.title);
@@ -96,39 +139,6 @@ async function resolveFields(link, updates) {
       }
     } catch (err) {
       console.error('[resolveFields] Apple AMP error:', err.message);
-    }
-  }
-
-  // Spotify Web API → ISRC
-  if (!merged.appleMusicUrl && spotifyUrl) {
-    try {
-      const spotifyMeta = await fetchSpotifyTrackMeta(spotifyUrl);
-      if (spotifyMeta?.isrc) {
-        const isrcUrl = await resolveAppleMusicByIsrc(
-          spotifyMeta.isrc,
-          merged.artist || spotifyMeta.artist,
-          merged.title || spotifyMeta.title
-        );
-        if (isrcUrl) {
-          resolvedUpdates.appleMusicUrl = isrcUrl;
-          merged.appleMusicUrl = isrcUrl;
-        }
-        if (!merged.artist && spotifyMeta.artist) resolvedUpdates.artist = spotifyMeta.artist;
-        if (!merged.title && spotifyMeta.title) resolvedUpdates.title = spotifyMeta.title;
-      }
-    } catch (err) {
-      console.error('[resolveFields] Spotify ISRC error:', err.message);
-    }
-  }
-
-  // Cover art from Spotify oEmbed
-  if (!merged.coverUrl && spotifyUrl) {
-    try {
-      const meta = await fetchSpotifyMeta(spotifyUrl);
-      if (meta?.thumbnailUrl) resolvedUpdates.coverUrl = meta.thumbnailUrl;
-      if (!merged.artist && meta?.artist) resolvedUpdates.artist = meta.artist;
-    } catch (err) {
-      console.error('[resolveFields] Spotify oEmbed error:', err.message);
     }
   }
 

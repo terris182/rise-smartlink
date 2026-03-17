@@ -34,10 +34,7 @@ async function resolveLink(slug) {
   const needsCover = !link.coverUrl;
   const needsTitle = !link.title;
 
-  // Use Songlink/Odesli API as the primary resolver — it provides:
-  // - Artist name (more reliable than Spotify oEmbed which often omits author_name)
-  // - Apple Music URL (cross-platform link resolution)
-  // - Title (fallback)
+  // ── Step 1: Songlink (primary — provides Apple Music URL directly) ──
   if (link.spotifyUrl && (needsArtist || needsAppleMusic || needsTitle)) {
     try {
       const crossLinks = await fetchCrossPlatformLinks(link.spotifyUrl);
@@ -60,7 +57,53 @@ async function resolveLink(slug) {
     }
   }
 
-  // Fallback: if Songlink didn't find Apple Music, try iTunes Search API
+  // ── Step 2: Spotify Web API (run early — provides artist/title/ISRC) ──
+  // This MUST run before text-based searches so we have metadata to search with
+  let spotifyIsrc = null;
+  if (link.spotifyUrl && (!link.artist || !link.title || !link.appleMusicUrl)) {
+    try {
+      const spotifyMeta = await fetchSpotifyTrackMeta(link.spotifyUrl);
+      if (spotifyMeta) {
+        spotifyIsrc = spotifyMeta.isrc;
+        if (!link.artist && spotifyMeta.artist) {
+          updates.artist = spotifyMeta.artist;
+          link.artist = spotifyMeta.artist;
+        }
+        if (!link.title && spotifyMeta.title) {
+          updates.title = spotifyMeta.title;
+          link.title = spotifyMeta.title;
+        }
+        console.log(`[resolveLink] Spotify API: "${spotifyMeta.title}" by ${spotifyMeta.artist}, ISRC: ${spotifyMeta.isrc}`);
+      }
+    } catch (err) {
+      console.error('[resolveLink] Spotify API error:', err.message);
+    }
+  }
+
+  // ── Step 3: Spotify oEmbed (backup for artist/title/cover) ──
+  if (link.spotifyUrl && (!link.artist || !link.title || needsCover)) {
+    try {
+      const meta = await fetchSpotifyMeta(link.spotifyUrl);
+      if (meta) {
+        if (needsCover && meta.thumbnailUrl) {
+          updates.coverUrl = meta.thumbnailUrl;
+          link.coverUrl = meta.thumbnailUrl;
+        }
+        if (!link.artist && meta.artist) {
+          updates.artist = meta.artist;
+          link.artist = meta.artist;
+        }
+        if (!link.title && meta.title) {
+          updates.title = meta.title;
+          link.title = meta.title;
+        }
+      }
+    } catch (err) {
+      console.error('[resolveLink] Spotify oEmbed error:', err.message);
+    }
+  }
+
+  // ── Step 4: iTunes Search (needs artist + title) ──
   if (!link.appleMusicUrl && link.artist && link.title) {
     try {
       const itunesUrl = await searchAppleMusicUrl(link.artist, link.title);
@@ -73,29 +116,35 @@ async function resolveLink(slug) {
     }
   }
 
-  // Fallback: Deezer text search → get ISRC → Apple Music AMP API / Songlink
-  // Deezer indexes tracks faster than iTunes Search and returns ISRCs for free
-  if (!link.appleMusicUrl && link.artist && link.title) {
+  // ── Step 5: ISRC-based resolution (most reliable for new tracks) ──
+  // Try Spotify ISRC first, fall back to Deezer ISRC
+  if (!link.appleMusicUrl && (spotifyIsrc || (link.artist && link.title))) {
     try {
-      const deezerResult = await deezerSearch(link.artist, link.title);
-      if (deezerResult?.isrc) {
-        console.log(`[resolveLink] Deezer found ISRC ${deezerResult.isrc} — trying ISRC-based resolution`);
-        const isrcUrl = await resolveAppleMusicByIsrc(
-          deezerResult.isrc,
-          link.artist,
-          link.title
-        );
+      let isrc = spotifyIsrc;
+
+      // If no Spotify ISRC, try Deezer text search to get one
+      if (!isrc && link.artist && link.title) {
+        const deezerResult = await deezerSearch(link.artist, link.title);
+        if (deezerResult?.isrc) {
+          isrc = deezerResult.isrc;
+          console.log(`[resolveLink] Deezer found ISRC: ${isrc}`);
+        }
+      }
+
+      if (isrc) {
+        console.log(`[resolveLink] Trying ISRC-based resolution with ${isrc}`);
+        const isrcUrl = await resolveAppleMusicByIsrc(isrc, link.artist, link.title);
         if (isrcUrl) {
           updates.appleMusicUrl = isrcUrl;
           link.appleMusicUrl = isrcUrl;
         }
       }
     } catch (err) {
-      console.error('[resolveLink] Deezer/ISRC error:', err.message);
+      console.error('[resolveLink] ISRC resolution error:', err.message);
     }
   }
 
-  // Fallback: Apple Music AMP API text search (if token available, no ISRC needed)
+  // ── Step 6: Apple Music AMP text search (last resort, no ISRC needed) ──
   if (!link.appleMusicUrl && link.artist && link.title) {
     try {
       const ampUrl = await appleMusicAmpSearch(link.artist, link.title);
@@ -105,49 +154,6 @@ async function resolveLink(slug) {
       }
     } catch (err) {
       console.error('[resolveLink] Apple AMP search error:', err.message);
-    }
-  }
-
-  // Fallback: Spotify Web API → ISRC → Apple Music resolution
-  if (!link.appleMusicUrl && link.spotifyUrl) {
-    try {
-      const spotifyMeta = await fetchSpotifyTrackMeta(link.spotifyUrl);
-      if (spotifyMeta?.isrc) {
-        console.log(`[resolveLink] Spotify ISRC ${spotifyMeta.isrc} — trying resolution`);
-        const isrcUrl = await resolveAppleMusicByIsrc(
-          spotifyMeta.isrc,
-          link.artist || spotifyMeta.artist,
-          link.title || spotifyMeta.title
-        );
-        if (isrcUrl) {
-          updates.appleMusicUrl = isrcUrl;
-          link.appleMusicUrl = isrcUrl;
-        }
-        if (!link.artist && spotifyMeta.artist) {
-          updates.artist = spotifyMeta.artist;
-          link.artist = spotifyMeta.artist;
-        }
-        if (!link.title && spotifyMeta.title) {
-          updates.title = spotifyMeta.title;
-          link.title = spotifyMeta.title;
-        }
-      }
-    } catch (err) {
-      console.error('[resolveLink] Spotify ISRC error:', err.message);
-    }
-  }
-
-  // Fallback: fetch cover art from Spotify oEmbed if still missing
-  if (needsCover && link.spotifyUrl) {
-    const meta = await fetchSpotifyMeta(link.spotifyUrl);
-    if (meta?.thumbnailUrl) {
-      updates.coverUrl = meta.thumbnailUrl;
-      link.coverUrl = meta.thumbnailUrl;
-    }
-    // Also grab artist from oEmbed as last resort (works for some tracks)
-    if (!link.artist && meta?.artist) {
-      updates.artist = meta.artist;
-      link.artist = meta.artist;
     }
   }
 
