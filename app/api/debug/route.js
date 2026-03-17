@@ -45,6 +45,27 @@ export async function GET(request) {
     }
   }
 
+  // Direct track fetch test using the token we just got
+  if (results.spotifyTokenTest?.status === 200) {
+    try {
+      const tokenData = JSON.parse(results.spotifyTokenTest.response);
+      const trackId = spotifyUrl.match(/track\/([a-zA-Z0-9]+)/)?.[1];
+      if (trackId && tokenData.access_token) {
+        const trackRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+          headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+        });
+        const trackBody = await trackRes.text();
+        results.spotifyTrackTest = {
+          trackId,
+          status: trackRes.status,
+          response: trackBody.length > 300 ? trackBody.slice(0, 300) + '...' : trackBody,
+        };
+      }
+    } catch (err) {
+      results.spotifyTrackTestError = err.message;
+    }
+  }
+
   try {
     results.spotifyApi = await fetchSpotifyTrackMeta(spotifyUrl);
   } catch (err) {
