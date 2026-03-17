@@ -62,9 +62,10 @@ export async function GET(request) {
 
   // Step 6: Spotify Web API
   results.spotifyEnv = {
+    hasBasicToken: !!process.env.SPOTIFY_BASIC_TOKEN,
+    basicTokenPrefix: process.env.SPOTIFY_BASIC_TOKEN ? process.env.SPOTIFY_BASIC_TOKEN.slice(0, 8) + '...' : 'missing',
     hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
     hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
-    clientIdPrefix: process.env.SPOTIFY_CLIENT_ID ? process.env.SPOTIFY_CLIENT_ID.slice(0, 6) + '...' : 'missing',
   };
   try {
     results.spotifyApi = await fetchSpotifyTrackMeta(spotifyUrl);
