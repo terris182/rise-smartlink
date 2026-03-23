@@ -7,9 +7,10 @@ import Script from 'next/script';
  * Client-side Smart Link page component.
  * Handles:
  * 1. Visual layout (Hypeddit-style: blurred BG, cover art, streaming buttons)
- * 2. Facebook Pixel (browser-side) for PageView + custom events
- * 3. Facebook Conversions API (server-side via /api/track) for the same events
- * 4. Event deduplication using shared event_id between pixel and CAPI
+ * 2. Pre-save mode (green button → ontout.com OAuth flow → follow + save)
+ * 3. Facebook Pixel (browser-side) for PageView + custom events
+ * 4. Facebook Conversions API (server-side via /api/track) for the same events
+ * 5. Event deduplication using shared event_id between pixel and CAPI
  */
 
 function generateEventId() {
@@ -22,23 +23,15 @@ function getCookie(name) {
   return match ? decodeURIComponent(match[2]) : null;
 }
 
-/**
- * Get or generate fbc (Click ID) for Facebook CAPI matching.
- * Priority: 1) _fbc cookie (set by pixel), 2) construct from fbclid URL param.
- * Format: fb.{subdomainIndex}.{creationTime}.{fbclid}
- */
 function getFbc() {
   const cookie = getCookie('_fbc');
   if (cookie) return cookie;
-
-  // Construct from fbclid URL parameter if present (user arrived via FB ad)
   if (typeof window === 'undefined') return null;
   try {
     const params = new URLSearchParams(window.location.search);
     const fbclid = params.get('fbclid');
     if (fbclid) {
       const fbc = `fb.1.${Date.now()}.${fbclid}`;
-      // Persist as cookie so subsequent events on same session use it
       document.cookie = `_fbc=${fbc};max-age=7776000;path=/;SameSite=Lax`;
       return fbc;
     }
@@ -46,20 +39,12 @@ function getFbc() {
   return null;
 }
 
-/**
- * Get or generate fbp (Browser ID) for Facebook CAPI matching.
- * Priority: 1) _fbp cookie (set by pixel), 2) generate our own.
- * Format: fb.1.{creationTime}.{random10digits}
- */
 function getFbp() {
   const cookie = getCookie('_fbp');
   if (cookie) return cookie;
-
   if (typeof window === 'undefined') return null;
-  // Generate a browser ID matching Facebook's format
   const random = Math.floor(1000000000 + Math.random() * 9000000000);
   const fbp = `fb.1.${Date.now()}.${random}`;
-  // Persist as cookie so all events in this session share the same fbp
   document.cookie = `_fbp=${fbp};max-age=7776000;path=/;SameSite=Lax`;
   return fbp;
 }
@@ -87,19 +72,38 @@ async function sendServerEvent({ eventName, eventId, link, customData = {} }) {
   }
 }
 
-export default function SmartLinkClient({ link }) {
+/**
+ * Build the pre-save URL that sends the user through Bubble's Spotify OAuth flow.
+ */
+function buildPresaveUrl(link) {
+  const base = 'https://ontout.com/redirectspotify';
+  const params = new URLSearchParams();
+  params.set('source', 'gudmuzik');
+  if (link.spotifyArtistId) params.set('artist_id', link.spotifyArtistId);
+  if (link.spotifyTrackUri) params.set('track_uri', link.spotifyTrackUri);
+  if (link.slug) params.set('slug', link.slug);
+  if (link.artist) params.set('artist_name', link.artist);
+  if (link.title) params.set('track_name', link.title);
+
+  if (link.contestEnabled && link.contestUrl) {
+    params.set('contest', 'true');
+    params.set('contest_redirect', link.contestUrl);
+  }
+
+  return `${base}?${params.toString()}`;
+}
+
+export default function SmartLinkClient({ link, isPresave }) {
   const hasFired = useRef(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const imgRef = useRef(null);
 
-  // Fix: check if image already loaded before React hydrated
   useEffect(() => {
     if (imgRef.current?.complete && imgRef.current?.naturalWidth > 0) {
       setImgLoaded(true);
     }
   }, []);
 
-  // Fire PageView + Smart Link Visit on load
   useEffect(() => {
     if (hasFired.current) return;
     hasFired.current = true;
@@ -159,7 +163,30 @@ export default function SmartLinkClient({ link }) {
     [link]
   );
 
-  // Platform configs
+  const handlePresaveClick = useCallback(() => {
+    const clickId = generateEventId();
+    const customData = {
+      artist_name: link.artist,
+      title: link.title,
+      genre: link.genre,
+      subgenre: link.subgenre,
+      action: 'presave',
+    };
+
+    if (typeof window.fbq === 'function') {
+      window.fbq('trackCustom', 'PreSaveClick', customData, { eventID: clickId });
+    }
+
+    if (link.fbPixelId) {
+      sendServerEvent({ eventName: 'PreSaveClick', eventId: clickId, link, customData });
+    }
+
+    const presaveUrl = buildPresaveUrl(link);
+    setTimeout(() => {
+      window.location.href = presaveUrl;
+    }, 200);
+  }, [link]);
+
   const platforms = [
     {
       key: 'spotify',
@@ -187,7 +214,6 @@ export default function SmartLinkClient({ link }) {
 
   return (
     <>
-      {/* Facebook Pixel Script */}
       {link.fbPixelId && (
         <Script
           id="fb-pixel"
@@ -208,37 +234,25 @@ export default function SmartLinkClient({ link }) {
         />
       )}
 
-      {/* Inter font */}
       <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
         rel="stylesheet"
       />
 
       <div style={styles.wrapper}>
-        {/* Blurred background from cover art */}
         {link.coverUrl && (
-          <div
-            style={{
-              ...styles.bgImage,
-              backgroundImage: `url(${link.coverUrl})`,
-            }}
-          />
+          <div style={{ ...styles.bgImage, backgroundImage: `url(${link.coverUrl})` }} />
         )}
         <div style={styles.bgOverlay} />
 
-        {/* Main content */}
         <div style={styles.container}>
-          {/* Cover art */}
           <div style={styles.coverWrapper}>
             {link.coverUrl ? (
               <img
                 ref={imgRef}
                 src={link.coverUrl}
                 alt={`${link.title} by ${link.artist}`}
-                style={{
-                  ...styles.coverImg,
-                  opacity: imgLoaded ? 1 : 0,
-                }}
+                style={{ ...styles.coverImg, opacity: imgLoaded ? 1 : 0 }}
                 width={640}
                 height={640}
                 loading="eager"
@@ -249,41 +263,67 @@ export default function SmartLinkClient({ link }) {
             )}
           </div>
 
-          {/* Title + Artist */}
           <h1 style={styles.title}>{link.title}</h1>
           {link.artist && <p style={styles.artist}>{link.artist}</p>}
 
-          {/* Streaming buttons */}
-          <div style={styles.buttonList}>
-            {platforms.map((p) => (
+          {isPresave ? (
+            <div style={styles.buttonList}>
+              {link.contestEnabled && link.contestPrizeText && (
+                <div style={styles.contestBanner}>
+                  <span style={styles.contestIcon}>🎁</span>
+                  <span style={styles.contestText}>{link.contestPrizeText}</span>
+                </div>
+              )}
               <button
-                key={p.key}
-                onClick={() => handleLinkClick(p.key, p.url)}
-                style={styles.streamButton}
+                onClick={handlePresaveClick}
+                style={styles.presaveButton}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = 'scale(1.02)';
-                  e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.25)';
+                  e.currentTarget.style.boxShadow = '0 4px 24px rgba(30, 215, 96, 0.4)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = 'scale(1)';
-                  e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.15)';
+                  e.currentTarget.style.boxShadow = '0 2px 16px rgba(30, 215, 96, 0.25)';
                 }}
               >
-                {p.logo ? (
-                  <>
-                    <span style={styles.logoWrapper}>{p.logo}</span>
-                    <span style={styles.playBtn}>Play</span>
-                  </>
-                ) : (
-                  <>
-                    <span style={styles.buttonIcon}>{p.icon}</span>
-                    <span style={{ ...styles.buttonLabel, color: p.color }}>{p.label}</span>
-                    <span style={styles.playBtn}>Play</span>
-                  </>
-                )}
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+                </svg>
+                <span style={{ fontWeight: 700, fontSize: '18px' }}>Pre-Save on Spotify</span>
               </button>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div style={styles.buttonList}>
+              {platforms.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => handleLinkClick(p.key, p.url)}
+                  style={styles.streamButton}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.02)';
+                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.25)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.15)';
+                  }}
+                >
+                  {p.logo ? (
+                    <>
+                      <span style={styles.logoWrapper}>{p.logo}</span>
+                      <span style={styles.playBtn}>Play</span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={styles.buttonIcon}>{p.icon}</span>
+                      <span style={{ ...styles.buttonLabel, color: p.color }}>{p.label}</span>
+                      <span style={styles.playBtn}>Play</span>
+                    </>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </>
@@ -387,6 +427,43 @@ const styles = {
     boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
     fontSize: '15px',
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
+  presaveButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '12px',
+    width: '100%',
+    height: '68px',
+    background: 'linear-gradient(135deg, #1DB954 0%, #1ed760 100%)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '16px',
+    padding: '0 24px',
+    cursor: 'pointer',
+    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+    boxShadow: '0 2px 16px rgba(30, 215, 96, 0.25)',
+    fontSize: '15px',
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
+  contestBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '12px 16px',
+    background: 'rgba(255, 215, 0, 0.12)',
+    border: '1px solid rgba(255, 215, 0, 0.3)',
+    borderRadius: '12px',
+    color: '#ffd700',
+    fontSize: '14px',
+    fontWeight: 500,
+  },
+  contestIcon: {
+    fontSize: '20px',
+    flexShrink: 0,
+  },
+  contestText: {
+    lineHeight: 1.4,
   },
   buttonIcon: {
     display: 'flex',

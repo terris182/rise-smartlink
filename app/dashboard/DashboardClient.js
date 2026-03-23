@@ -196,7 +196,11 @@ function OverviewView({ links, totals, loading, onStats, onEdit }) {
           {links.map((link) => (
             <div key={link.slug} style={styles.tableRow}>
               <span style={{ ...styles.tableCell, flex: 2 }}>
-                <strong style={{ color: '#fff' }}>{link.title || link.slug}</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <strong style={{ color: '#fff' }}>{link.title || link.slug}</strong>
+                  {link.presave && <span style={styles.badgePresave}>PRE-SAVE</span>}
+                  {link.contestEnabled && <span style={styles.badgeContest}>CONTEST</span>}
+                </div>
                 <br />
                 <span style={{ color: '#888', fontSize: '13px' }}>
                   {link.artist ? `${link.artist} · ` : ''}
@@ -567,6 +571,30 @@ function EditView({ slug, onDone }) {
         />
       </div>
 
+      {/* Pre-save Settings */}
+      <div style={{ ...styles.section, marginTop: '24px' }}>
+        <h3 style={styles.sectionTitle}>Pre-Save Settings</h3>
+        <div style={styles.formGrid}>
+          <CheckboxField label="Enable Pre-Save" checked={form.presave} onChange={(v) => handleChange('presave', v)} />
+          <div />
+          <FormField label="Release Date" value={form.presaveReleaseDate} onChange={(v) => handleChange('presaveReleaseDate', v)} placeholder="YYYY-MM-DD" />
+          <FormField label="Release Time (Eastern)" value={form.presaveReleaseTime} onChange={(v) => handleChange('presaveReleaseTime', v)} placeholder="HH:MM (e.g. 00:00)" />
+          <FormField label="Spotify Artist ID" value={form.spotifyArtistId} onChange={(v) => handleChange('spotifyArtistId', v)} placeholder="e.g. 4Z8W4fKeB5YxbusRsdQVPb" />
+          <FormField label="Spotify Track URI" value={form.spotifyTrackUri} onChange={(v) => handleChange('spotifyTrackUri', v)} placeholder="e.g. spotify:track:6rqhFgbb..." />
+        </div>
+      </div>
+
+      {/* Contest Settings */}
+      <div style={{ ...styles.section, marginTop: '16px' }}>
+        <h3 style={styles.sectionTitle}>Contest / Giveaway</h3>
+        <div style={styles.formGrid}>
+          <CheckboxField label="Enable Contest" checked={form.contestEnabled} onChange={(v) => handleChange('contestEnabled', v)} />
+          <div />
+          <FormField label="Contest URL" value={form.contestUrl} onChange={(v) => handleChange('contestUrl', v)} placeholder="https://ontout.com/contestbose?..." />
+          <FormField label="Prize Text" value={form.contestPrizeText} onChange={(v) => handleChange('contestPrizeText', v)} placeholder="Win a pair of headphones!" />
+        </div>
+      </div>
+
       <div style={{ marginTop: '20px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={styles.saveBtn} onClick={() => handleSave()} disabled={saving || resolving}>
           {saving ? 'Saving...' : 'Save Changes'}
@@ -602,6 +630,14 @@ function CreateView({ onDone }) {
     genre: '',
     subgenre: '',
     bgColor: '',
+    presave: false,
+    presaveReleaseDate: '',
+    presaveReleaseTime: '',
+    spotifyArtistId: '',
+    spotifyTrackUri: '',
+    contestEnabled: false,
+    contestUrl: '',
+    contestPrizeText: '',
   });
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState('');
@@ -698,6 +734,30 @@ function CreateView({ onDone }) {
         />
       </div>
 
+      {/* Pre-save Settings */}
+      <div style={{ ...styles.section, marginTop: '24px' }}>
+        <h3 style={styles.sectionTitle}>Pre-Save Settings</h3>
+        <div style={styles.formGrid}>
+          <CheckboxField label="Enable Pre-Save" checked={form.presave} onChange={(v) => handleChange('presave', v)} />
+          <div />
+          <FormField label="Release Date" value={form.presaveReleaseDate} onChange={(v) => handleChange('presaveReleaseDate', v)} placeholder="YYYY-MM-DD" />
+          <FormField label="Release Time (Eastern)" value={form.presaveReleaseTime} onChange={(v) => handleChange('presaveReleaseTime', v)} placeholder="HH:MM (e.g. 00:00)" />
+          <FormField label="Spotify Artist ID" value={form.spotifyArtistId} onChange={(v) => handleChange('spotifyArtistId', v)} placeholder="e.g. 4Z8W4fKeB5YxbusRsdQVPb" />
+          <FormField label="Spotify Track URI" value={form.spotifyTrackUri} onChange={(v) => handleChange('spotifyTrackUri', v)} placeholder="e.g. spotify:track:6rqhFgbb..." />
+        </div>
+      </div>
+
+      {/* Contest Settings */}
+      <div style={{ ...styles.section, marginTop: '16px' }}>
+        <h3 style={styles.sectionTitle}>Contest / Giveaway</h3>
+        <div style={styles.formGrid}>
+          <CheckboxField label="Enable Contest" checked={form.contestEnabled} onChange={(v) => handleChange('contestEnabled', v)} />
+          <div />
+          <FormField label="Contest URL" value={form.contestUrl} onChange={(v) => handleChange('contestUrl', v)} placeholder="https://ontout.com/contestbose?..." />
+          <FormField label="Prize Text" value={form.contestPrizeText} onChange={(v) => handleChange('contestPrizeText', v)} placeholder="Win a pair of headphones!" />
+        </div>
+      </div>
+
       <div style={{ marginTop: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
         <button style={styles.saveBtn} onClick={handleCreate} disabled={creating}>
           {creating ? 'Creating...' : 'Create Link'}
@@ -767,6 +827,20 @@ function FormField({ label, value, onChange, placeholder = '', statusColor }) {
           ...(statusColor && value ? { borderColor: statusColor + '44' } : {}),
         }}
       />
+    </div>
+  );
+}
+
+function CheckboxField({ label, checked, onChange }) {
+  return (
+    <div style={{ ...styles.formField, flexDirection: 'row', alignItems: 'center', gap: '10px' }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: '18px', height: '18px', accentColor: '#3b82f6', cursor: 'pointer' }}
+      />
+      <label style={{ ...styles.formLabel, margin: 0 }}>{label}</label>
     </div>
   );
 }
@@ -1007,5 +1081,27 @@ const styles = {
     textDecoration: 'none',
     display: 'block',
     marginTop: '4px',
+  },
+  badgePresave: {
+    display: 'inline-block',
+    padding: '2px 8px',
+    background: 'rgba(30, 215, 96, 0.15)',
+    color: '#1DB954',
+    fontSize: '10px',
+    fontWeight: 700,
+    borderRadius: '4px',
+    letterSpacing: '0.05em',
+    textTransform: 'uppercase',
+  },
+  badgeContest: {
+    display: 'inline-block',
+    padding: '2px 8px',
+    background: 'rgba(255, 215, 0, 0.15)',
+    color: '#ffd700',
+    fontSize: '10px',
+    fontWeight: 700,
+    borderRadius: '4px',
+    letterSpacing: '0.05em',
+    textTransform: 'uppercase',
   },
 };

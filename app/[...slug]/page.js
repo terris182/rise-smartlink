@@ -24,6 +24,34 @@ function parseSlug(params) {
   return Array.isArray(parts) ? parts.join('/') : parts;
 }
 
+/**
+ * Determine if a link should be in pre-save mode.
+ * Compares current time (Eastern Time) against the release date/time.
+ * Returns true if presave is enabled AND we haven't passed the release datetime yet.
+ */
+function shouldShowPresave(link) {
+  if (!link.presave) return false;
+  if (!link.presaveReleaseDate) return true; // presave enabled but no release date = always presave
+
+  // Build release datetime in Eastern Time
+  const releaseTime = link.presaveReleaseTime || '00:00';
+  const releaseDateTimeStr = `${link.presaveReleaseDate}T${releaseTime}:00`;
+
+  // Parse as Eastern Time
+  const now = new Date();
+  const easternNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+
+  const releaseParts = releaseDateTimeStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+  if (!releaseParts) return true;
+
+  const releaseDate = new Date(
+    parseInt(releaseParts[1]), parseInt(releaseParts[2]) - 1, parseInt(releaseParts[3]),
+    parseInt(releaseParts[4]), parseInt(releaseParts[5]), parseInt(releaseParts[6])
+  );
+
+  return easternNow < releaseDate;
+}
+
 async function resolveLink(slug) {
   const link = await getLink(slug);
   if (!link) return null;
@@ -170,18 +198,20 @@ export async function generateMetadata({ params }) {
   const link = await resolveLink(slug);
   if (!link) return { title: 'Not Found' };
 
+  const presavePrefix = shouldShowPresave(link) ? 'Pre-Save: ' : '';
+
   return {
-    title: `${link.title} by ${link.artist}`,
+    title: `${presavePrefix}${link.title} by ${link.artist}`,
     description: `Listen to ${link.title} by ${link.artist} on Spotify`,
     openGraph: {
-      title: `${link.title} by ${link.artist}`,
+      title: `${presavePrefix}${link.title} by ${link.artist}`,
       description: `Listen to ${link.title} by ${link.artist}`,
       images: link.coverUrl ? [{ url: link.coverUrl, width: 640, height: 640 }] : [],
       type: 'music.song',
     },
     twitter: {
       card: 'summary_large_image',
-      title: `${link.title} by ${link.artist}`,
+      title: `${presavePrefix}${link.title} by ${link.artist}`,
       images: link.coverUrl ? [link.coverUrl] : [],
     },
   };
@@ -191,6 +221,8 @@ export default async function SmartLinkPage({ params }) {
   const slug = parseSlug(await params);
   const link = await resolveLink(slug);
   if (!link) notFound();
+
+  const isPresave = shouldShowPresave(link);
 
   // Pass serializable link data to client component
   const linkData = {
@@ -204,7 +236,16 @@ export default async function SmartLinkPage({ params }) {
     subgenre: link.subgenre || '',
     fbPixelId: link.fbPixelId || '',
     bgColor: link.bgColor || '',
+    // Pre-save fields
+    presave: link.presave || false,
+    presaveReleaseDate: link.presaveReleaseDate || '',
+    presaveReleaseTime: link.presaveReleaseTime || '',
+    spotifyArtistId: link.spotifyArtistId || '',
+    spotifyTrackUri: link.spotifyTrackUri || '',
+    contestEnabled: link.contestEnabled || false,
+    contestUrl: link.contestUrl || '',
+    contestPrizeText: link.contestPrizeText || '',
   };
 
-  return <SmartLinkClient link={linkData} />;
+  return <SmartLinkClient link={linkData} isPresave={isPresave} />;
 }
