@@ -642,10 +642,55 @@ function CreateView({ onDone }) {
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState('');
   const [createdUrl, setCreatedUrl] = useState('');
+  const [resolving, setResolving] = useState(false);
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  // Auto-fill metadata when a valid Spotify URL is pasted/entered
+  useEffect(() => {
+    const url = form.spotifyUrl.trim();
+    if (!url || !url.match(/open\.spotify\.com\/(track|album|playlist)\//)) return;
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setResolving(true);
+      setMessage('Resolving metadata...');
+      try {
+        const res = await fetch('/api/resolve-meta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spotifyUrl: url }),
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (data && !controller.signal.aborted) {
+          setForm((prev) => ({
+            ...prev,
+            title: data.title || prev.title,
+            artist: data.artist || prev.artist,
+            appleMusicUrl: data.appleMusicUrl || prev.appleMusicUrl,
+          }));
+          const parts = [];
+          if (data.title) parts.push(`"${data.title}"`);
+          if (data.artist) parts.push(`by ${data.artist}`);
+          if (data.appleMusicUrl) parts.push('+ Apple Music');
+          setMessage(parts.length > 0 ? `Resolved: ${parts.join(' ')}` : 'Metadata resolved (partial)');
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setMessage('');
+        }
+      }
+      setResolving(false);
+    }, 800); // 800ms debounce
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form.spotifyUrl]);
 
   const handleCreate = async () => {
     if (!form.spotifyUrl) {
@@ -759,8 +804,8 @@ function CreateView({ onDone }) {
       </div>
 
       <div style={{ marginTop: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-        <button style={styles.saveBtn} onClick={handleCreate} disabled={creating}>
-          {creating ? 'Creating...' : 'Create Link'}
+        <button style={styles.saveBtn} onClick={handleCreate} disabled={creating || resolving}>
+          {creating ? 'Creating...' : resolving ? 'Resolving...' : 'Create Link'}
         </button>
         <button style={styles.backBtn} onClick={onDone}>
           Cancel

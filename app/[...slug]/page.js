@@ -3,7 +3,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
-import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch } from '@/lib/isrc-resolver';
+import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
 import { notFound } from 'next/navigation';
 import SmartLinkClient from './SmartLinkClient';
 
@@ -172,18 +172,9 @@ async function resolveLink(slug) {
     }
   }
 
-  // ── Step 6: Apple Music AMP text search (last resort, no ISRC needed) ──
-  if (!link.appleMusicUrl && link.artist && link.title) {
-    try {
-      const ampUrl = await appleMusicAmpSearch(link.artist, link.title);
-      if (ampUrl) {
-        updates.appleMusicUrl = ampUrl;
-        link.appleMusicUrl = ampUrl;
-      }
-    } catch (err) {
-      console.error('[resolveLink] Apple AMP search error:', err.message);
-    }
-  }
+  // Note: Step 6 (standalone AMP text search) was removed — resolveAppleMusicByIsrc
+  // already includes AMP text search as Strategy B, so calling it again was redundant
+  // and wasted Apple Music API quota.
 
   // Persist any auto-resolved fields back to KV
   if (Object.keys(updates).length > 0) {

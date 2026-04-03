@@ -4,7 +4,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
-import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch } from '@/lib/isrc-resolver';
+import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
 
 /**
  * POST /api/create-link
@@ -123,15 +123,8 @@ export async function POST(request) {
       }
     }
 
-    // ── Step 6: Apple Music AMP text search (last resort) ──
-    if (!appleMusicUrl && artist && title) {
-      try {
-        const ampUrl = await appleMusicAmpSearch(artist, title);
-        if (ampUrl) appleMusicUrl = ampUrl;
-      } catch (err) {
-        console.error('[create-link] Apple AMP error:', err.message);
-      }
-    }
+    // Note: Step 6 (standalone AMP text search) removed — resolveAppleMusicByIsrc
+    // already includes AMP text search as Strategy B internally.
 
     // Generate slug as artist-name/song-name
     let slug = body.slug;
