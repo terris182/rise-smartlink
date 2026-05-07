@@ -58,7 +58,9 @@ async function resolveLink(slug) {
 
   const updates = {};
   const needsArtist = !link.artist;
-  const needsAppleMusic = !link.appleMusicUrl;
+  // spotifyOnly flag suppresses Apple Music auto-resolve so the link stays Spotify-only.
+  // Used by Active Listener campaigns where we want a single-platform deeplink.
+  const needsAppleMusic = !link.appleMusicUrl && !link.spotifyOnly;
   const needsCover = !link.coverUrl;
   const needsTitle = !link.title;
 
