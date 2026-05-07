@@ -134,7 +134,7 @@ async function resolveLink(slug) {
   }
 
   // ── Step 4: iTunes Search (needs artist + title) ──
-  if (!link.appleMusicUrl && link.artist && link.title) {
+  if (!link.appleMusicUrl && !link.spotifyOnly && link.artist && link.title) {
     try {
       const itunesUrl = await searchAppleMusicUrl(link.artist, link.title);
       if (itunesUrl) {
@@ -148,7 +148,7 @@ async function resolveLink(slug) {
 
   // ── Step 5: ISRC-based resolution (most reliable for new tracks) ──
   // Try Spotify ISRC first, fall back to Deezer ISRC
-  if (!link.appleMusicUrl && (spotifyIsrc || (link.artist && link.title))) {
+  if (!link.appleMusicUrl && !link.spotifyOnly && (spotifyIsrc || (link.artist && link.title))) {
     try {
       let isrc = spotifyIsrc;
 
