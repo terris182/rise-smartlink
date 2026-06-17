@@ -228,6 +228,9 @@ export default function CuratorClient() {
 function JobForm({ job, playlists, onChange, onSave, onCancel }) {
   const isInsert = !job.mode || job.mode === 'insert';
   const opts = [{ id: '', name: '— select a playlist —' }, ...playlists.map((p) => ({ id: p.id, name: `${p.name} (${p.trackCount})` }))];
+  // Submissions dropdown: float playlists named "submission…" to the top.
+  const isSub = (o) => /submission/i.test(o.name);
+  const sourceOpts = [opts[0], ...opts.slice(1).filter(isSub), ...opts.slice(1).filter((o) => !isSub(o))];
   return (
     <div style={s.card}>
       <h2 style={{ color: '#fff', marginTop: 0, marginBottom: 16, fontSize: 18 }}>{job.id ? 'Edit Curation' : 'New Curation'}</h2>
@@ -244,7 +247,7 @@ function JobForm({ job, playlists, onChange, onSave, onCancel }) {
         </Field>
         <Field label={isInsert ? 'Submissions playlist (source)' : 'Add new from (optional source)'}>
           <select style={s.input} value={job.sourcePlaylistId || ''} onChange={(e) => onChange({ sourcePlaylistId: e.target.value })}>
-            {opts.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            {sourceOpts.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </Field>
         <Field label={isInsert ? 'Curated playlist (target)' : 'Playlist (target)'}>
