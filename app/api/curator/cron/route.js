@@ -24,7 +24,20 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Curator not configured' }, { status: 503 });
   }
 
-  const jobs = (await getAllJobs()).filter((j) => j.active && j.cadence === 'daily');
+  // Cron fires hourly; run each daily job at its chosen PST hour, once per PST day.
+  const tz = 'America/Los_Angeles';
+  const curHour = parseInt(new Date().toLocaleString('en-US', { timeZone: tz, hour12: false, hour: '2-digit' }), 10) % 24;
+  const curDayPST = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  const force = new URL(request.url).searchParams.get('force') === '1';
+
+  const jobs = (await getAllJobs()).filter((j) => {
+    if (!j.active || j.cadence !== 'daily') return false;
+    if (force) return true;
+    const hour = Number.isFinite(+j.dailyHour) ? +j.dailyHour : 2;
+    if (hour !== curHour) return false;
+    const lastDayPST = j.lastRun ? new Date(j.lastRun).toLocaleDateString('en-CA', { timeZone: tz }) : null;
+    return lastDayPST !== curDayPST; // not already run today
+  });
   const runs = [];
   for (const job of jobs) {
     try {

@@ -163,7 +163,7 @@ export default function CuratorClient() {
             <p style={s.subtitle}>{account ? `Connected: ${account.name || account.id}${account.email ? ` · ${account.email}` : ''}` : 'Energy-sorted playlist curation'}</p>
           </div>
           {!editing && (
-            <button style={s.primaryBtn} onClick={() => setEditing({ mode: 'insert', energyDirection: 'desc', excludeTopN: 5, placementMode: 'window', windowSize: 30, active: true, cadence: 'manual', removeFromSource: false })}>+ New Curation</button>
+            <button style={s.primaryBtn} onClick={() => setEditing({ mode: 'insert', energyDirection: 'desc', excludeTopN: 5, placementMode: 'window', windowSize: 30, active: true, cadence: 'manual', dailyHour: 2, removeFromSource: false })}>+ New Curation</button>
           )}
         </div>
 
@@ -196,7 +196,7 @@ export default function CuratorClient() {
                       <strong style={{ color: '#fff', fontSize: 16 }}>{job.name}</strong>
                       <span style={{ ...s.badge, background: job.active ? '#10b98122' : '#33333322', color: job.active ? '#10b981' : '#888', borderColor: job.active ? '#10b98155' : '#444' }}>{job.active ? 'Active' : 'Paused'}</span>
                       <span style={{ ...s.badge, background: '#3b82f622', color: '#93c5fd', borderColor: '#3b82f655' }}>{job.mode === 'resort' ? 'Energy Re-Sort' : job.mode === 'refresh' ? 'Playlist Refresh' : 'Auto-Curator'}</span>
-                      <span style={{ ...s.badge }}>{job.cadence === 'daily' ? 'Daily' : 'Manual'}</span>
+                      <span style={{ ...s.badge }}>{job.cadence === 'daily' ? `Daily ${hourLabelPST(job.dailyHour ?? 2)}` : 'Manual'}</span>
                       <span style={{ ...s.badge }}>Energy {job.energyDirection === 'asc' ? 'low→high' : 'high→low'}</span>
                       <span style={{ ...s.badge }}>{(!job.mode || job.mode === 'insert') ? `Exclude top ${job.excludeTopN ?? 5}` : `Pin top ${job.excludeTopN ?? 3}`}</span>
                     </div>
@@ -263,13 +263,13 @@ function JobForm({ job, playlists, onChange, onSave, onCancel }) {
         {isInsert && (
           <Field label="Placement search">
             <select style={s.input} value={job.placementMode || 'window'} onChange={(e) => onChange({ placementMode: e.target.value })}>
-              <option value="window">First N positions (forgiving toward the end)</option>
+              <option value="window">First N positions — set N below (forgiving toward N)</option>
               <option value="throughout">Throughout the whole playlist</option>
             </select>
           </Field>
         )}
         {isInsert && (job.placementMode || 'window') === 'window' && (
-          <Field label="Placement window size">
+          <Field label={`N = window size (currently ${job.windowSize ?? 30} positions)`}>
             <input type="number" min="1" style={s.input} value={job.windowSize ?? 30} onChange={(e) => onChange({ windowSize: e.target.value })} />
           </Field>
         )}
@@ -285,6 +285,15 @@ function JobForm({ job, playlists, onChange, onSave, onCancel }) {
             <option value="daily">Daily (auto)</option>
           </select>
         </Field>
+        {job.cadence === 'daily' && (
+          <Field label="Daily run time (PST)">
+            <select style={s.input} value={job.dailyHour ?? 2} onChange={(e) => onChange({ dailyHour: e.target.value })}>
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>{hourLabelPST(h)}</option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Options">
           <label style={s.check}><input type="checkbox" checked={!!job.removeFromSource} onChange={(e) => onChange({ removeFromSource: e.target.checked })} /> Clear submissions after adding</label>
           <label style={s.check}><input type="checkbox" checked={job.active !== false} onChange={(e) => onChange({ active: e.target.checked })} /> Active</label>
@@ -305,6 +314,11 @@ function Field({ label, children }) {
       {children}
     </div>
   );
+}
+
+function hourLabelPST(h) {
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return `${hr}:00 ${h < 12 ? 'AM' : 'PM'} PST`;
 }
 
 const s = {
