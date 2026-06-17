@@ -74,13 +74,13 @@ export default function CuratorClient() {
   const saveJob = async () => {
     setMessage('');
     const j = editing;
-    const isResort = j.mode === 'resort';
+    const isInsert = !j.mode || j.mode === 'insert';
     if (!j.targetPlaylistId) { setMessage('Error: pick a target playlist'); return; }
-    if (!isResort && !j.sourcePlaylistId) { setMessage('Error: pick a submissions (source) playlist'); return; }
+    if (isInsert && !j.sourcePlaylistId) { setMessage('Error: pick a submissions (source) playlist'); return; }
     if (j.sourcePlaylistId && j.sourcePlaylistId === j.targetPlaylistId) { setMessage('Error: source and target must differ'); return; }
-    const autoName = isResort
-      ? `Re-sort: ${playlistName(j.targetPlaylistId)}`
-      : `${playlistName(j.sourcePlaylistId)} → ${playlistName(j.targetPlaylistId)}`;
+    const autoName = isInsert
+      ? `${playlistName(j.sourcePlaylistId)} → ${playlistName(j.targetPlaylistId)}`
+      : `${j.mode === 'refresh' ? 'Refresh' : 'Re-sort'}: ${playlistName(j.targetPlaylistId)}`;
     const payload = {
       ...j,
       name: j.name || autoName,
@@ -195,15 +195,15 @@ export default function CuratorClient() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <strong style={{ color: '#fff', fontSize: 16 }}>{job.name}</strong>
                       <span style={{ ...s.badge, background: job.active ? '#10b98122' : '#33333322', color: job.active ? '#10b981' : '#888', borderColor: job.active ? '#10b98155' : '#444' }}>{job.active ? 'Active' : 'Paused'}</span>
-                      <span style={{ ...s.badge, background: '#3b82f622', color: '#93c5fd', borderColor: '#3b82f655' }}>{job.mode === 'resort' ? 'Energy Re-Sort' : 'Auto-Curator'}</span>
+                      <span style={{ ...s.badge, background: '#3b82f622', color: '#93c5fd', borderColor: '#3b82f655' }}>{job.mode === 'resort' ? 'Energy Re-Sort' : job.mode === 'refresh' ? 'Playlist Refresh' : 'Auto-Curator'}</span>
                       <span style={{ ...s.badge }}>{job.cadence === 'daily' ? 'Daily' : 'Manual'}</span>
                       <span style={{ ...s.badge }}>Energy {job.energyDirection === 'asc' ? 'low→high' : 'high→low'}</span>
-                      <span style={{ ...s.badge }}>{job.mode === 'resort' ? `Pin top ${job.excludeTopN ?? 3}` : `Exclude top ${job.excludeTopN ?? 5}`}</span>
+                      <span style={{ ...s.badge }}>{(!job.mode || job.mode === 'insert') ? `Exclude top ${job.excludeTopN ?? 5}` : `Pin top ${job.excludeTopN ?? 3}`}</span>
                     </div>
                     <p style={{ color: '#9aa', margin: '8px 0 0', fontSize: 13 }}>
-                      {job.mode === 'resort'
-                        ? <>Re-sort {job.targetPlaylistName || job.targetPlaylistId}{job.sourcePlaylistId ? <> <span style={{ color: '#555' }}>+ new from</span> {job.sourcePlaylistName || job.sourcePlaylistId}</> : null}</>
-                        : <>{job.sourcePlaylistName || job.sourcePlaylistId} <span style={{ color: '#555' }}>→</span> {job.targetPlaylistName || job.targetPlaylistId}</>}
+                      {(!job.mode || job.mode === 'insert')
+                        ? <>{job.sourcePlaylistName || job.sourcePlaylistId} <span style={{ color: '#555' }}>→</span> {job.targetPlaylistName || job.targetPlaylistId}</>
+                        : <>{job.mode === 'refresh' ? 'Refresh' : 'Re-sort'} {job.targetPlaylistName || job.targetPlaylistId}{job.sourcePlaylistId ? <> <span style={{ color: '#555' }}>+ new from</span> {job.sourcePlaylistName || job.sourcePlaylistId}</> : null}</>}
                     </p>
                     <p style={{ color: '#777', margin: '4px 0 0', fontSize: 12 }}>
                       Last run: {fmtDate(job.lastRun)} {job.lastResult ? `· ${job.lastResult.ok ? '✓' : '✗'} ${job.lastResult.message || ''}` : ''}
@@ -226,7 +226,7 @@ export default function CuratorClient() {
 }
 
 function JobForm({ job, playlists, onChange, onSave, onCancel }) {
-  const isResort = job.mode === 'resort';
+  const isInsert = !job.mode || job.mode === 'insert';
   const opts = [{ id: '', name: '— select a playlist —' }, ...playlists.map((p) => ({ id: p.id, name: `${p.name} (${p.trackCount})` }))];
   return (
     <div style={s.card}>
@@ -238,23 +238,29 @@ function JobForm({ job, playlists, onChange, onSave, onCancel }) {
         <Field label="Mode">
           <select style={s.input} value={job.mode || 'insert'} onChange={(e) => onChange({ mode: e.target.value })}>
             <option value="insert">Auto-Curator — add new tracks by energy (no resort)</option>
-            <option value="resort">Energy Re-Sort — re-sort whole playlist</option>
+            <option value="resort">Energy Re-Sort — re-sort whole playlist by energy</option>
+            <option value="refresh">Playlist Refresh — recency tiers + energy</option>
           </select>
         </Field>
-        <Field label={isResort ? 'Add new from (optional source)' : 'Submissions playlist (source)'}>
+        <Field label={isInsert ? 'Submissions playlist (source)' : 'Add new from (optional source)'}>
           <select style={s.input} value={job.sourcePlaylistId || ''} onChange={(e) => onChange({ sourcePlaylistId: e.target.value })}>
             {opts.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </Field>
-        <Field label={isResort ? 'Playlist to re-sort (target)' : 'Curated playlist (target)'}>
+        <Field label={isInsert ? 'Curated playlist (target)' : 'Playlist (target)'}>
           <select style={s.input} value={job.targetPlaylistId || ''} onChange={(e) => onChange({ targetPlaylistId: e.target.value })}>
             {opts.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </Field>
-        <Field label={isResort ? 'Pin top N tracks (kept in place)' : 'Exclude top N tracks (protected)'}>
-          <input type="number" min="0" style={s.input} value={job.excludeTopN ?? (isResort ? 3 : 5)} onChange={(e) => onChange({ excludeTopN: e.target.value })} />
+        <Field label={isInsert ? 'Exclude top N tracks (protected)' : 'Pin top N tracks (kept on top)'}>
+          <input type="number" min="0" style={s.input} value={job.excludeTopN ?? (isInsert ? 5 : 3)} onChange={(e) => onChange({ excludeTopN: e.target.value })} />
         </Field>
-        {!isResort && (
+        {job.mode === 'refresh' && (
+          <Field label="Recency tiers (fixed)">
+            <span style={{ color: '#9aa', fontSize: 13, padding: '8px 0' }}>≤2 weeks · 2–4 weeks · 1–2 months · older — each energy-sorted, oldest at bottom</span>
+          </Field>
+        )}
+        {isInsert && (
           <Field label="Placement search">
             <select style={s.input} value={job.placementMode || 'window'} onChange={(e) => onChange({ placementMode: e.target.value })}>
               <option value="window">First N positions (forgiving toward the end)</option>
@@ -262,7 +268,7 @@ function JobForm({ job, playlists, onChange, onSave, onCancel }) {
             </select>
           </Field>
         )}
-        {!isResort && (job.placementMode || 'window') === 'window' && (
+        {isInsert && (job.placementMode || 'window') === 'window' && (
           <Field label="Placement window size">
             <input type="number" min="1" style={s.input} value={job.windowSize ?? 30} onChange={(e) => onChange({ windowSize: e.target.value })} />
           </Field>

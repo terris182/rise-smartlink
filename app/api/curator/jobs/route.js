@@ -17,8 +17,8 @@ export async function POST(request) {
     if (!body.targetPlaylistId) {
       return NextResponse.json({ error: 'targetPlaylistId is required' }, { status: 400 });
     }
-    // Insert mode needs a submissions playlist; resort can run on the target alone.
-    if (body.mode !== 'resort' && !body.sourcePlaylistId) {
+    // Insert mode needs a submissions playlist; resort/refresh can run on the target alone.
+    if ((!body.mode || body.mode === 'insert') && !body.sourcePlaylistId) {
       return NextResponse.json({ error: 'sourcePlaylistId is required for the auto-curator (insert) mode' }, { status: 400 });
     }
     if (body.sourcePlaylistId && body.sourcePlaylistId === body.targetPlaylistId) {
