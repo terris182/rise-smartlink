@@ -163,7 +163,7 @@ export default function CuratorClient() {
             <p style={s.subtitle}>{account ? `Connected: ${account.name || account.id}${account.email ? ` · ${account.email}` : ''}` : 'Energy-sorted playlist curation'}</p>
           </div>
           {!editing && (
-            <button style={s.primaryBtn} onClick={() => setEditing({ mode: 'insert', energyDirection: 'desc', excludeTopN: 5, placementMode: 'window', windowSize: 30, active: true, cadence: 'manual', dailyHour: 2, removeFromSource: false })}>+ New Curation</button>
+            <button style={s.primaryBtn} onClick={() => setEditing({ mode: 'insert', energyDirection: 'desc', excludeTopN: 5, placementMode: 'window', windowSize: 30, active: true, cadence: 'manual', dailyHour: 2, removeFromSource: true })}>+ New Curation</button>
           )}
         </div>
 
@@ -296,7 +296,8 @@ function JobForm({ job, playlists, onChange, onSave, onCancel }) {
         )}
         <Field label="Options">
           <label style={s.check}><input type="checkbox" checked={!!job.removeFromSource} onChange={(e) => onChange({ removeFromSource: e.target.checked })} /> Clear submissions after adding</label>
-          <label style={s.check}><input type="checkbox" checked={job.active !== false} onChange={(e) => onChange({ active: e.target.checked })} /> Active</label>
+          <label style={s.check}><input type="checkbox" checked={job.active !== false} onChange={(e) => onChange({ active: e.target.checked })} /> Active — include in the daily schedule</label>
+          <span style={{ color: '#777', fontSize: 12 }}>Uncheck Active to pause automatic daily runs. “Run now” still works either way.</span>
         </Field>
       </div>
       <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
