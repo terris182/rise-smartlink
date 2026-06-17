@@ -14,10 +14,14 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    if (!body.sourcePlaylistId || !body.targetPlaylistId) {
-      return NextResponse.json({ error: 'sourcePlaylistId and targetPlaylistId are required' }, { status: 400 });
+    if (!body.targetPlaylistId) {
+      return NextResponse.json({ error: 'targetPlaylistId is required' }, { status: 400 });
     }
-    if (body.sourcePlaylistId === body.targetPlaylistId) {
+    // Insert mode needs a submissions playlist; resort can run on the target alone.
+    if (body.mode !== 'resort' && !body.sourcePlaylistId) {
+      return NextResponse.json({ error: 'sourcePlaylistId is required for the auto-curator (insert) mode' }, { status: 400 });
+    }
+    if (body.sourcePlaylistId && body.sourcePlaylistId === body.targetPlaylistId) {
       return NextResponse.json({ error: 'Source and target playlists must be different' }, { status: 400 });
     }
     const job = await createJob(body);
