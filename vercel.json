@@ -3,6 +3,7 @@
   "framework": "nextjs",
   "regions": ["iad1"],
   "crons": [
-    { "path": "/api/curator/cron", "schedule": "0 * * * *" }
+    { "path": "/api/curator/cron", "schedule": "0 * * * *" },
+    { "path": "/api/curator/health", "schedule": "0 6,18 * * *" }
   ]
 }

@@ -26,7 +26,10 @@ export function middleware(request) {
   const { pathname } = request.nextUrl;
 
   // Curator API is gated EXCEPT the cron endpoint (protected separately by CRON_SECRET)
-  const isCuratorApi = pathname.startsWith('/api/curator') && !pathname.startsWith('/api/curator/cron');
+  const isCuratorApi =
+    pathname.startsWith('/api/curator') &&
+    !pathname.startsWith('/api/curator/cron') &&
+    !pathname.startsWith('/api/curator/health');
 
   // Only protect dashboard and admin API routes
   if (
