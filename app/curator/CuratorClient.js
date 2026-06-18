@@ -163,7 +163,7 @@ export default function CuratorClient() {
             <p style={s.subtitle}>{account ? `Connected: ${account.name || account.id}${account.email ? ` · ${account.email}` : ''}` : 'Energy-sorted playlist curation'}</p>
           </div>
           {!editing && (
-            <button style={s.primaryBtn} onClick={() => setEditing({ mode: 'insert', energyDirection: 'desc', excludeTopN: 5, placementMode: 'window', windowSize: 30, active: true, cadence: 'manual', dailyHour: 2, removeFromSource: true })}>+ New Curation</button>
+            <button style={s.primaryBtn} onClick={() => setEditing({ mode: 'insert', energyDirection: 'desc', excludeTopN: 5, placementMode: 'window', windowSize: 30, active: true, cadence: 'manual', dailyHours: [10, 22], removeFromSource: true })}>+ New Curation</button>
           )}
         </div>
 
@@ -196,7 +196,7 @@ export default function CuratorClient() {
                       <strong style={{ color: '#fff', fontSize: 16 }}>{job.name}</strong>
                       <span style={{ ...s.badge, background: job.active ? '#10b98122' : '#33333322', color: job.active ? '#10b981' : '#888', borderColor: job.active ? '#10b98155' : '#444' }}>{job.active ? 'Active' : 'Paused'}</span>
                       <span style={{ ...s.badge, background: '#3b82f622', color: '#93c5fd', borderColor: '#3b82f655' }}>{job.mode === 'resort' ? 'Energy Re-Sort' : job.mode === 'refresh' ? 'Playlist Refresh' : 'Auto-Curator'}</span>
-                      <span style={{ ...s.badge }}>{job.cadence === 'daily' ? `Daily ${hourLabelPST(job.dailyHour ?? 2)}` : 'Manual'}</span>
+                      <span style={{ ...s.badge }}>{job.cadence === 'daily' ? `Daily ${jobTimesLabel(job)} PST` : 'Manual'}</span>
                       <span style={{ ...s.badge }}>Energy {job.energyDirection === 'asc' ? 'low→high' : 'high→low'}</span>
                       <span style={{ ...s.badge }}>{(!job.mode || job.mode === 'insert') ? `Exclude top ${job.excludeTopN ?? 5}` : `Pin top ${job.excludeTopN ?? 3}`}</span>
                     </div>
@@ -289,12 +289,28 @@ function JobForm({ job, playlists, onChange, onSave, onCancel }) {
           </select>
         </Field>
         {job.cadence === 'daily' && (
-          <Field label="Daily run time (PST)">
-            <select style={s.input} value={job.dailyHour ?? 2} onChange={(e) => onChange({ dailyHour: e.target.value })}>
-              {Array.from({ length: 24 }, (_, h) => (
-                <option key={h} value={h}>{hourLabelPST(h)}</option>
-              ))}
-            </select>
+          <Field label="Daily run times (PST) — pick one or more">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {Array.from({ length: 24 }, (_, h) => {
+                const cur = (Array.isArray(job.dailyHours) && job.dailyHours.length ? job.dailyHours : [job.dailyHour ?? 2]).map(Number);
+                const sel = cur.includes(h);
+                return (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => {
+                      const set = new Set(cur);
+                      sel ? set.delete(h) : set.add(h);
+                      const arr = [...set].sort((a, b) => a - b);
+                      onChange({ dailyHours: arr.length ? arr : [h] });
+                    }}
+                    style={{ ...s.chip, ...(sel ? s.chipOn : {}) }}
+                  >
+                    {hourShort(h)}
+                  </button>
+                );
+              })}
+            </div>
           </Field>
         )}
         <Field label="Options">
@@ -325,6 +341,16 @@ function hourLabelPST(h) {
   return `${hr}:00 ${h < 12 ? 'AM' : 'PM'} PST`;
 }
 
+function hourShort(h) {
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return `${hr}${h < 12 ? 'a' : 'p'}`;
+}
+
+function jobTimesLabel(job) {
+  const hours = (Array.isArray(job.dailyHours) && job.dailyHours.length ? job.dailyHours : [job.dailyHour ?? 2]).map(Number);
+  return hours.map(hourShort).join(' & ');
+}
+
 const s = {
   page: { minHeight: '100vh', background: '#0a0a0a', color: '#e5e5e5', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
   container: { maxWidth: 1000, margin: '0 auto', padding: 24 },
@@ -344,4 +370,6 @@ const s = {
   check: { display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', fontSize: 14 },
   warnBox: { background: '#7c2d1222', border: '1px solid #b91c1c55', color: '#fca5a5', padding: '12px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13 },
   msgBox: { background: '#14141a', border: '1px solid #333', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 14 },
+  chip: { padding: '6px 10px', minWidth: 38, background: '#0e0e0e', color: '#999', border: '1px solid #333', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  chipOn: { background: '#3b82f6', color: '#fff', borderColor: '#3b82f6', fontWeight: 600 },
 };

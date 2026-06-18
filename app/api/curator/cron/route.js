@@ -30,13 +30,16 @@ export async function GET(request) {
   const curDayPST = new Date().toLocaleDateString('en-CA', { timeZone: tz });
   const force = new URL(request.url).searchParams.get('force') === '1';
 
+  const slotFmt = { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false };
+  const curSlot = new Date().toLocaleString('en-US', slotFmt); // unique per PST hour
   const jobs = (await getAllJobs()).filter((j) => {
     if (!j.active || j.cadence !== 'daily') return false;
     if (force) return true;
-    const hour = Number.isFinite(+j.dailyHour) ? +j.dailyHour : 2;
-    if (hour !== curHour) return false;
-    const lastDayPST = j.lastRun ? new Date(j.lastRun).toLocaleDateString('en-CA', { timeZone: tz }) : null;
-    return lastDayPST !== curDayPST; // not already run today
+    const hours = (Array.isArray(j.dailyHours) && j.dailyHours.length ? j.dailyHours : [j.dailyHour ?? 2]).map(Number);
+    if (!hours.includes(curHour)) return false;
+    // Run once per PST hour-slot (guards against retries; supports multiple times/day).
+    const lastSlot = j.lastRun ? new Date(j.lastRun).toLocaleString('en-US', slotFmt) : null;
+    return lastSlot !== curSlot;
   });
   const runs = [];
   for (const job of jobs) {
