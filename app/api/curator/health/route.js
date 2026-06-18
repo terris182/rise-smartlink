@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { curatorConfigured, getPlaylistMeta } from '@/lib/spotify-curator';
+import { curatorConfigured, getPlaylistTracks } from '@/lib/spotify-curator';
 import { getAllJobs } from '@/lib/curator-jobs';
 import { sendAlert } from '@/lib/email-alert';
 
@@ -44,13 +44,17 @@ export async function GET(request) {
 
   for (const job of jobs) {
     const label = job.name || job.targetPlaylistId;
-    // (a) submissions drained?
+    // (a) Did songs make it from submissions onto the main playlist?
+    // A song is "stuck" only if it was added BEFORE the last run and is STILL in
+    // submissions — i.e. it survived a curation run. Freshly-submitted songs
+    // (added after the last run) are just waiting for the next run, not a failure.
     if (job.sourcePlaylistId) {
       try {
-        const meta = await getPlaylistMeta(job.sourcePlaylistId);
-        const total = meta?.tracks?.total ?? 0;
-        if (total > 0) {
-          problems.push(`"${label}": submissions playlist still has ${total} song(s) — they did not make it onto the main playlist.`);
+        const subTracks = await getPlaylistTracks(job.sourcePlaylistId);
+        const lastRunMs = job.lastRun ? new Date(job.lastRun).getTime() : 0;
+        const stuck = subTracks.filter((t) => t.addedAt && new Date(t.addedAt).getTime() < lastRunMs - 60000);
+        if (stuck.length) {
+          problems.push(`"${label}": ${stuck.length} submission song(s) didn't make it onto the main playlist — still stuck after the last run (${stuck.slice(0, 5).map((t) => t.name).join(', ')}).`);
         }
       } catch (err) {
         problems.push(`"${label}": could not read submissions playlist (${err.message}).`);
