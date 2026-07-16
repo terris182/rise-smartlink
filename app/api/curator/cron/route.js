@@ -3,6 +3,7 @@ import { curatorConfigured, curateOnce } from '@/lib/spotify-curator';
 import { getAllJobs, recordRun } from '@/lib/curator-jobs';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store'; // WHI-883: never serve deploy-time cached data reads
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 

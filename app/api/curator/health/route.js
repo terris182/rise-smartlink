@@ -4,6 +4,7 @@ import { getAllJobs } from '@/lib/curator-jobs';
 import { sendAlert } from '@/lib/email-alert';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store'; // WHI-883: never serve deploy-time cached data reads
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
