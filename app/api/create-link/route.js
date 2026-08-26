@@ -80,8 +80,11 @@ export async function POST(request) {
     if (!title) title = 'Untitled';
     if (!artist) artist = '';
 
+    // spotifyOnly links (Active Listener campaigns) skip Apple Music resolution entirely
+    const spotifyOnly = body.spotifyOnly === true || body.spotifyOnly === 'true';
+
     // ── Step 4: iTunes Search ──
-    if (!appleMusicUrl && artist && title) {
+    if (!spotifyOnly && !appleMusicUrl && artist && title) {
       try {
         const itunesUrl = await searchAppleMusicUrl(artist, title);
         if (itunesUrl) appleMusicUrl = itunesUrl;
@@ -91,7 +94,7 @@ export async function POST(request) {
     }
 
     // ── Step 5: ISRC-based resolution ──
-    if (!appleMusicUrl && (spotifyIsrc || (artist && title))) {
+    if (!spotifyOnly && !appleMusicUrl && (spotifyIsrc || (artist && title))) {
       try {
         let isrc = spotifyIsrc;
         if (!isrc && artist && title) {
