@@ -38,6 +38,12 @@ export async function POST(request) {
   try {
     const body = await request.json();
 
+    // Normalize junk values some API clients (e.g. Bubble) send for blank params
+    const junk = (v) => v === null || v === undefined || v === '' || v === 'null' || v === 'undefined';
+    for (const k of ['title', 'artist', 'coverUrl', 'appleMusicUrl', 'genre', 'subgenre', 'slug', 'bgColor']) {
+      if (junk(body[k])) delete body[k];
+    }
+
     // Validate required fields
     if (!body.spotifyUrl) {
       return NextResponse.json(
