@@ -1,7 +1,6 @@
 import { getLink, updateLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
-import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
 import { notFound } from 'next/navigation';
@@ -64,28 +63,8 @@ async function resolveLink(slug) {
   const needsCover = !link.coverUrl;
   const needsTitle = !link.title;
 
-  // ── Step 1: Songlink (primary — provides Apple Music URL directly) ──
-  if (link.spotifyUrl && (needsArtist || needsAppleMusic || needsTitle)) {
-    try {
-      const crossLinks = await fetchCrossPlatformLinks(link.spotifyUrl);
-      if (crossLinks) {
-        if (needsArtist && crossLinks.artistName) {
-          updates.artist = crossLinks.artistName;
-          link.artist = crossLinks.artistName;
-        }
-        if (needsTitle && crossLinks.title) {
-          updates.title = crossLinks.title;
-          link.title = crossLinks.title;
-        }
-        if (needsAppleMusic && crossLinks.appleMusicUrl) {
-          updates.appleMusicUrl = crossLinks.appleMusicUrl;
-          link.appleMusicUrl = crossLinks.appleMusicUrl;
-        }
-      }
-    } catch (err) {
-      console.error('[resolveLink] Songlink error:', err.message);
-    }
-  }
+  // Songlink/Odesli step removed 2026-08-26 (WHI-1174): public API deprecated and
+  // per Terris we use official APIs only. Resolution relies on the steps below.
 
   // ── Step 2: Spotify Web API (run early — provides artist/title/ISRC) ──
   // This MUST run before text-based searches so we have metadata to search with

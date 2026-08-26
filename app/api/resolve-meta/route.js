@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
-import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
 
@@ -34,20 +33,7 @@ export async function POST(request) {
     const result = { resolvedVia: [] };
     let spotifyIsrc = null;
 
-    // ── Step 1: Songlink (primary — gives Apple Music URL directly) ──
-    try {
-      const crossLinks = await fetchCrossPlatformLinks(body.spotifyUrl);
-      if (crossLinks) {
-        if (crossLinks.artistName) { result.artist = crossLinks.artistName; }
-        if (crossLinks.title) { result.title = crossLinks.title; }
-        if (crossLinks.appleMusicUrl) {
-          result.appleMusicUrl = crossLinks.appleMusicUrl;
-          result.resolvedVia.push('songlink');
-        }
-      }
-    } catch (err) {
-      console.error('[resolve-meta] Songlink error:', err.message);
-    }
+    // Songlink/Odesli step removed 2026-08-26 (WHI-1174): official APIs only.
 
     // ── Step 2: Spotify Web API (provides artist/title/ISRC) ──
     try {

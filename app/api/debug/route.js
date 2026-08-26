@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { searchAppleMusicUrl } from '@/lib/itunes';
-import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch, appleMusicIsrcLookup } from '@/lib/isrc-resolver';
@@ -79,22 +78,15 @@ export async function GET(request) {
     results.spotifyOembedError = err.message;
   }
 
-  // Step 3: Songlink
-  try {
-    results.songlink = await fetchCrossPlatformLinks(spotifyUrl);
-  } catch (err) {
-    results.songlinkError = err.message;
-  }
+  // Step 3 (Songlink) removed 2026-08-26 (WHI-1174): official APIs only.
 
   // Resolve artist/title from best available source
   const resolvedArtist = artist
     || results.spotifyApi?.artist
-    || results.songlink?.artistName
     || results.spotifyOembed?.artist
     || '';
   const resolvedTitle = title
     || results.spotifyApi?.title
-    || results.songlink?.title
     || results.spotifyOembed?.title
     || '';
   const isrc = results.spotifyApi?.isrc || null;
@@ -141,7 +133,6 @@ export async function GET(request) {
 
   // Summary
   results.finalAppleMusicUrl =
-    results.songlink?.appleMusicUrl ||
     results.itunesUrl ||
     results.appleAmpIsrcUrl ||
     results.appleAmpUrl ||

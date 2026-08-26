@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { getAllLinks, getLink, updateLink, createLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
-import { fetchCrossPlatformLinks } from '@/lib/songlink';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch } from '@/lib/isrc-resolver';
 
@@ -34,28 +33,7 @@ async function resolveFields(link, updates) {
   const merged = { ...link, ...updates };
   const resolvedUpdates = {};
 
-  // ── Step 1: Songlink ──
-  if (spotifyUrl && (!merged.artist || !merged.title || !merged.appleMusicUrl)) {
-    try {
-      const crossLinks = await fetchCrossPlatformLinks(spotifyUrl);
-      if (crossLinks) {
-        if (!merged.artist && crossLinks.artistName) {
-          resolvedUpdates.artist = crossLinks.artistName;
-          merged.artist = crossLinks.artistName;
-        }
-        if (!merged.title && crossLinks.title) {
-          resolvedUpdates.title = crossLinks.title;
-          merged.title = crossLinks.title;
-        }
-        if (!merged.appleMusicUrl && crossLinks.appleMusicUrl) {
-          resolvedUpdates.appleMusicUrl = crossLinks.appleMusicUrl;
-          merged.appleMusicUrl = crossLinks.appleMusicUrl;
-        }
-      }
-    } catch (err) {
-      console.error('[resolveFields] Songlink error:', err.message);
-    }
-  }
+  // Songlink/Odesli step removed 2026-08-26 (WHI-1174): official APIs only.
 
   // ── Step 2: Spotify Web API (early — provides artist/title/ISRC) ──
   let spotifyIsrc = null;
