@@ -21,7 +21,7 @@ export const maxDuration = 30;
  *      &countries=US|United States,CA|Canada   (only used for custom)
  *      &interests=6003...|Pop music,6003...|Dua Lipa  (only used for custom)
  *      &genre=Pop &custom_audiences=123,456
- *                                   -> {targeting:"<json string>", targeting_obj, dropped:[...]}
+ *                                   -> {targeting:" <json string>" (leading space so the Bubble connector keeps it as text), dropped, mode, countries, interests}
  *
  * Every ad set targets Spotify (interest 6002969794329) AND one of the
  * chosen interests (two flexible_spec entries), age 18 to 65.
@@ -193,7 +193,7 @@ async function buildTargeting(p) {
 
   // targeting is the JSON string Bubble passes straight to Meta; no nested object in the response (Bubble's connector
   // could not consume the nested flexible_spec object at runtime, 2026-09-15)
-  return { targeting: JSON.stringify(obj), dropped: dropped.join('; '), mode: targeting, countries: (obj.geo_locations.countries || ['worldwide']).join(','), interests: interests.map((i) => i.name).join(',') };
+  return { targeting: " " + JSON.stringify(obj), dropped: dropped.join('; '), mode: targeting, countries: (obj.geo_locations.countries || ['worldwide']).join(','), interests: interests.map((i) => i.name).join(',') };
 }
 
 export async function GET(request) {
