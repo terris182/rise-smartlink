@@ -149,11 +149,14 @@ function parsePairs(s) {
 async function buildTargeting(p) {
   const targeting = String(p.get('targeting') || 'big5').toLowerCase().replace(/\s+/g, '');
   const dropped = [];
-  const obj = { age_min: 18, age_max: 65 };
+  // advantage_audience 0: Meta requires the flag (subcode 1870227) and 0 keeps the chosen interests/countries authoritative.
+  const obj = { age_min: 18, age_max: 65, targeting_automation: { advantage_audience: 0 } };
 
   // geo
   if (targeting === 'global') {
+    // Meta refuses worldwide without a Taiwan regulated-ads declaration (subcode 3858498), so exclude TW.
     obj.geo_locations = { country_groups: ['worldwide'] };
+    obj.excluded_geo_locations = { countries: ['TW'] };
   } else {
     let codes = targeting === 'custom' ? parsePairs(p.get('countries')).map((c) => c.id.toUpperCase()) : BIG5;
     codes = codes.filter((c) => /^[A-Z]{2}$/.test(c));
