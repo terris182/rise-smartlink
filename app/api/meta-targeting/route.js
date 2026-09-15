@@ -154,9 +154,9 @@ async function buildTargeting(p) {
 
   // geo
   if (targeting === 'global') {
-    // Meta refuses worldwide without a Taiwan regulated-ads declaration (subcode 3858498), so exclude TW.
+    // Meta refuses worldwide without a Taiwan regulated-ads declaration (subcode 3858498), so exclude TW and SG (Singapore needs the same, 3858550). Meta accepted worldwide minus these two on 2026-09-15.
     obj.geo_locations = { country_groups: ['worldwide'] };
-    obj.excluded_geo_locations = { countries: ['TW'] };
+    obj.excluded_geo_locations = { countries: ['TW', 'SG'] };
   } else {
     let codes = targeting === 'custom' ? parsePairs(p.get('countries')).map((c) => c.id.toUpperCase()) : BIG5;
     codes = codes.filter((c) => /^[A-Z]{2}$/.test(c));
