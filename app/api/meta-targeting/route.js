@@ -187,7 +187,8 @@ async function buildTargeting(p) {
   obj.flexible_spec = [{ interests: [SPOTIFY_INTEREST] }];
   if (interests.length) obj.flexible_spec.push({ interests });
 
-  const ca = String(p.get('custom_audiences') || '').split(',').map((x) => x.trim()).filter(Boolean);
+  // accepts "123,456", or Bubble's pre-formatted '{"id":"123"},{"id":"456"}' (custom_audiences_json): any digit run of 5+ is an id
+  const ca = [...new Set((String(p.get('custom_audiences') || '').match(/\d{5,}/g) || []))];
   if (ca.length) obj.custom_audiences = ca.map((id) => ({ id }));
 
   return { targeting: JSON.stringify(obj), targeting_obj: obj, dropped, mode: targeting };
