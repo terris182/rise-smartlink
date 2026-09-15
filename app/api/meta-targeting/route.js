@@ -191,7 +191,9 @@ async function buildTargeting(p) {
   const ca = [...new Set((String(p.get('custom_audiences') || '').match(/\d{5,}/g) || []))];
   if (ca.length) obj.custom_audiences = ca.map((id) => ({ id }));
 
-  return { targeting: JSON.stringify(obj), targeting_obj: obj, dropped, mode: targeting };
+  // targeting is the JSON string Bubble passes straight to Meta; no nested object in the response (Bubble's connector
+  // could not consume the nested flexible_spec object at runtime, 2026-09-15)
+  return { targeting: JSON.stringify(obj), dropped: dropped.join('; '), mode: targeting, countries: (obj.geo_locations.countries || ['worldwide']).join(','), interests: interests.map((i) => i.name).join(',') };
 }
 
 export async function GET(request) {
