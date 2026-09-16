@@ -146,6 +146,9 @@ function parsePairs(s) {
   }).filter((x) => x.id);
 }
 
+// parity with Main's lAauf (Update Ad Set Targeting), which sent home + recent + frequently_in; Main's create step sent none (Meta default home,recent)
+const LOCATION_TYPES = ['home', 'recent', 'frequently_in'];
+
 async function buildTargeting(p) {
   const targeting = String(p.get('targeting') || 'big5').toLowerCase().replace(/\s+/g, '');
   const dropped = [];
@@ -155,13 +158,13 @@ async function buildTargeting(p) {
   // geo
   if (targeting === 'global') {
     // Meta refuses worldwide without a Taiwan regulated-ads declaration (subcode 3858498), so exclude TW and SG (Singapore needs the same, 3858550). Meta accepted worldwide minus these two on 2026-09-15.
-    obj.geo_locations = { country_groups: ['worldwide'] };
+    obj.geo_locations = { country_groups: ['worldwide'], location_types: LOCATION_TYPES };
     obj.excluded_geo_locations = { countries: ['TW', 'SG'] };
   } else {
     let codes = targeting === 'custom' ? parsePairs(p.get('countries')).map((c) => c.id.toUpperCase()) : BIG5;
     codes = codes.filter((c) => /^[A-Z]{2}$/.test(c));
     if (!codes.length) { dropped.push('no valid countries, used Big 5'); codes = BIG5; }
-    obj.geo_locations = { countries: codes };
+    obj.geo_locations = { countries: codes, location_types: LOCATION_TYPES };
   }
 
   // interests (second layer)
