@@ -112,6 +112,24 @@ async function resolveLink(slug) {
     }
   }
 
+  // ── Step 3b: playlist cover refresh (WHI-1509, 2026-09-16) ──
+  // Spotify regenerates a playlist's mosaic cover whenever its tracks change and the old
+  // image URL starts returning 404 (Calming Ambient Sleep, BigYard v1/v2 all broke this way).
+  // For playlist links, re-read the cover from oEmbed on every render (fetch is cached 24h in
+  // lib/spotify.js) and persist it when it changed, so the page never shows a dead image.
+  if (link.spotifyUrl && /\/playlist\//.test(link.spotifyUrl) && link.coverUrl && !updates.coverUrl) {
+    try {
+      const meta = await fetchSpotifyMeta(link.spotifyUrl);
+      if (meta?.thumbnailUrl && meta.thumbnailUrl !== link.coverUrl) {
+        console.log(`[resolveLink] playlist cover refreshed for ${slug}`);
+        updates.coverUrl = meta.thumbnailUrl;
+        link.coverUrl = meta.thumbnailUrl;
+      }
+    } catch (err) {
+      console.error('[resolveLink] playlist cover refresh error:', err.message);
+    }
+  }
+
   // ── Step 4: iTunes Search (needs artist + title) ──
   if (!link.appleMusicUrl && !link.spotifyOnly && link.artist && link.title) {
     try {
