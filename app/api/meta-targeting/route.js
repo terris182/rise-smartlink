@@ -209,6 +209,11 @@ export async function GET(request) {
   if (!token()) return NextResponse.json({ error: 'META_TARGETING_TOKEN not configured' }, { status: 500 });
   const type = p.get('type') || '';
   try {
+    if (type === 'interest' && /^suggest:/i.test(p.get('q') || '')) {
+      // suggested artists served through the interest-search call: Bubble's server intermittently 500s the dedicated
+      // "suggest artists" connector call (UnexpectedError, 2026-09-15) while the search call is reliable
+      return NextResponse.json({ results: await artistSuggestions((p.get('q') || '').replace(/^suggest:/i, '').trim()) });
+    }
     if (type === 'interest') {
       const q = (p.get('q') || '').trim();
       if (q.length < 2) return NextResponse.json({ results: [] });
