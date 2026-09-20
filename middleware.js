@@ -35,6 +35,8 @@ export function middleware(request) {
   if (
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/curator') ||
+    pathname.startsWith('/fanpages') ||
+    pathname.startsWith('/api/fanpages') ||
     pathname.startsWith('/api/analytics') ||
     pathname.startsWith('/api/links') ||
     isCuratorApi
@@ -63,5 +65,5 @@ export function middleware(request) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/curator/:path*', '/api/analytics/:path*', '/api/links/:path*', '/api/curator/:path*'],
+  matcher: ['/dashboard/:path*', '/curator/:path*', '/fanpages/:path*', '/api/fanpages/:path*', '/api/analytics/:path*', '/api/links/:path*', '/api/curator/:path*'],
 };
