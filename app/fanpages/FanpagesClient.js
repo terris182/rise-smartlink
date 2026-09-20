@@ -28,6 +28,11 @@ export default function FanpagesClient() {
   const [pasteBox, setPasteBox] = useState('');
   const searchTimer = useRef(null);
 
+  const [suggestions, setSuggestions] = useState(null);
+  const [loadingSug, setLoadingSug] = useState(false);
+  const [previewId, setPreviewId] = useState(null);
+  const [openGroups, setOpenGroups] = useState({ viral: true, editorial: true, sounds: true });
+
   const loadPages = useCallback(async () => {
     const res = await fetch('/api/fanpages');
     if (res.status === 401) { setAuthed(false); return; }
@@ -52,6 +57,21 @@ export default function FanpagesClient() {
     setLoadingTracks(false);
   }, []);
 
+  const loadSuggestions = useCallback(async (key, refresh = false) => {
+    if (!key) return;
+    setLoadingSug(true);
+    setPreviewId(null);
+    try {
+      const res = await fetch(`/api/fanpages/suggestions?key=${encodeURIComponent(key)}${refresh ? '&refresh=1' : ''}`);
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed to load suggestions'); setSuggestions(null); }
+      else setSuggestions(data);
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoadingSug(false);
+  }, []);
+
   useEffect(() => {
     fetch('/api/fanpages')
       .then((res) => { if (res.ok) setAuthed(true); setAuthChecking(false); })
@@ -59,7 +79,7 @@ export default function FanpagesClient() {
   }, []);
 
   useEffect(() => { if (authed) loadPages(); }, [authed, loadPages]);
-  useEffect(() => { if (authed && activeKey) { setResults([]); setQuery(''); loadTracks(activeKey); } }, [authed, activeKey, loadTracks]);
+  useEffect(() => { if (authed && activeKey) { setResults([]); setQuery(''); setSuggestions(null); loadTracks(activeKey); loadSuggestions(activeKey); } }, [authed, activeKey, loadTracks, loadSuggestions]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -239,6 +259,81 @@ export default function FanpagesClient() {
             </div>
           </div>
         )}
+
+        {active && (
+          <div style={{ ...s.card, marginTop: 16 }}>
+            <div style={s.cardHead}>
+              <div>
+                <span style={s.label}>Suggested for {active.playlistName || active.key}</span>
+                <p style={{ ...s.hint, margin: '4px 0 0' }}>
+                  Top songs right now in this page's genres. Viral first, then Spotify editorial playlists, then The Sound of genre playlists. Preview plays 30 seconds (the full song if you are signed in to Spotify in this browser).
+                  {suggestions?.refreshedAt ? ` Updated ${new Date(suggestions.refreshedAt).toLocaleString()}.` : ''}
+                </p>
+              </div>
+              <button onClick={() => loadSuggestions(activeKey, true)} style={s.btn} disabled={loadingSug}>{loadingSug ? 'Loading...' : 'Refresh suggestions'}</button>
+            </div>
+            {loadingSug && !suggestions && <p style={s.muted}>Building suggestions, this takes a few seconds the first time each day...</p>}
+            {suggestions && suggestions.errors && suggestions.errors.length > 0 && (
+              <p style={s.hint}>Some sources were skipped: {suggestions.errors.join('; ')}</p>
+            )}
+            {suggestions && ['viral', 'editorial', 'sounds'].map((group) => {
+              const secs = suggestions.sections.filter((x) => x.group === group);
+              if (!secs.length) return null;
+              const groupTitle = group === 'viral' ? 'Viral now' : group === 'editorial' ? 'Spotify editorial playlists' : 'The Sound of (genre playlists)';
+              const count = secs.reduce((n, x) => n + x.tracks.length, 0);
+              return (
+                <div key={group} style={{ marginTop: 14 }}>
+                  <button onClick={() => setOpenGroups((g) => ({ ...g, [group]: !g[group] }))} style={s.groupHead}>
+                    <span>{openGroups[group] ? '\u25BE' : '\u25B8'} {groupTitle}</span>
+                    <span style={{ color: '#666', fontWeight: 400 }}>{count} song{count === 1 ? '' : 's'}</span>
+                  </button>
+                  {openGroups[group] && secs.map((sec) => (
+                    <div key={sec.title + group} style={{ marginTop: 8 }}>
+                      {group !== 'viral' && (
+                        <div style={s.secTitle}>
+                          {sec.playlistId ? <a href={`https://open.spotify.com/playlist/${sec.playlistId}`} target="_blank" rel="noreferrer" style={s.link}>{sec.title}</a> : sec.title}
+                          <span style={{ color: '#666', fontWeight: 400 }}> · {sec.subtitle}</span>
+                        </div>
+                      )}
+                      {group === 'viral' && sec.tracks.length === 0 && <p style={s.hint}>Nothing on the viral playlists matches this page's genres right now.</p>}
+                      <ul style={s.list}>
+                        {sec.tracks.map((t) => {
+                          const on = onPlaylist.has(t.uri);
+                          return (
+                            <li key={`${group}-${t.id}`} style={{ ...s.rowWrap, ...(on ? { opacity: 0.55 } : {}) }}>
+                              <div style={s.row}>
+                                {t.cover && <img src={t.cover} alt="" style={s.cover} />}
+                                <div style={s.rowText}>
+                                  <div style={s.trackName}>{t.url ? <a href={t.url} target="_blank" rel="noreferrer" style={s.trackLink}>{t.name}</a> : t.name}</div>
+                                  <div style={s.trackMeta}>{t.artists}</div>
+                                </div>
+                                <span style={s.srcBadge} title={sec.subtitle}>{group === 'viral' ? `Viral · ${t.sourceName}` : group === 'editorial' ? `Editorial · ${t.sourceName}` : t.sourceName}</span>
+                                <button onClick={() => setPreviewId(previewId === t.id ? null : t.id)} style={s.btn}>{previewId === t.id ? 'Close' : 'Preview'}</button>
+                                {on ? <span style={s.badge}>On playlist</span> : <button onClick={() => addUri(t.uri)} disabled={busyUri === t.uri} style={s.smallPrimary}>Add</button>}
+                              </div>
+                              {previewId === t.id && (
+                                <iframe
+                                  title={`Preview ${t.name}`}
+                                  src={`https://open.spotify.com/embed/track/${t.id}?utm_source=generator&theme=0`}
+                                  width="100%"
+                                  height="80"
+                                  frameBorder="0"
+                                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                                  loading="lazy"
+                                  style={{ borderRadius: 8, marginTop: 6 }}
+                                />
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -268,7 +363,11 @@ const s = {
   label: { fontSize: 12, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' },
   link: { color: '#60a5fa', fontSize: 13, textDecoration: 'none' },
   list: { listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 6 },
-  row: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#0e0e0e', border: '1px solid #222', borderRadius: 8 },
+  row: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#0e0e0e', border: '1px solid #222', borderRadius: 8, flexWrap: 'wrap' },
+  rowWrap: { display: 'flex', flexDirection: 'column' },
+  groupHead: { width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#101010', color: '#fff', border: '1px solid #2a2a2a', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' },
+  secTitle: { fontSize: 13, fontWeight: 600, color: '#ddd', margin: '10px 2px 0' },
+  srcBadge: { fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#1a1a2a', border: '1px solid #33335a', color: '#a5b4fc', whiteSpace: 'nowrap', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' },
   pos: { width: 22, textAlign: 'right', color: '#666', fontSize: 12, flexShrink: 0 },
   cover: { width: 40, height: 40, borderRadius: 4, objectFit: 'cover', flexShrink: 0 },
   rowText: { flex: 1, minWidth: 0 },
