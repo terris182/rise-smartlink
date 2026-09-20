@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const DASHBOARD_PASSWORD = 'barrybickle';
+const DASHBOARD_PASSWORD = 'CitySearch1!';
 
 function simpleHash(str) {
   let hash = 0;

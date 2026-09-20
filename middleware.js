@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
  * The password hash is checked against a cookie set by the login form.
  */
 
-const DASHBOARD_PASSWORD = 'barrybickle';
+const DASHBOARD_PASSWORD = 'CitySearch1!';
 
 // Simple hash for cookie value (not crypto-secure, just prevents casual snooping)
 function simpleHash(str) {
