@@ -194,6 +194,13 @@ async function buildTargeting(p) {
   const ca = [...new Set((String(p.get('custom_audiences') || '').match(/\d{5,}/g) || []))];
   if (ca.length) obj.custom_audiences = ca.map((id) => ({ id }));
 
+  // WHI-1877: Instagram-only placements (feed, story, reels; never explore). Kill switch: META_TARGETING_SEND_PLACEMENTS=0 (default on).
+  const sendPlacements = !['0', 'false', 'off'].includes(String(process.env.META_TARGETING_SEND_PLACEMENTS ?? '1').trim().toLowerCase());
+  if (sendPlacements) {
+    obj.publisher_platforms = ['instagram'];
+    obj.instagram_positions = ['stream', 'story', 'reels'];
+  }
+
   // targeting is the JSON string Bubble passes straight to Meta; no nested object in the response (Bubble's connector
   // could not consume the nested flexible_spec object at runtime, 2026-09-15)
   return { targeting: " " + JSON.stringify(obj), dropped: dropped.join('; '), mode: targeting, countries: (obj.geo_locations.countries || ['worldwide']).join(','), interests: interests.map((i) => i.name).join(',') };
