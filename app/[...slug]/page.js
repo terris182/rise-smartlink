@@ -117,7 +117,7 @@ async function resolveLink(slug) {
   // image URL starts returning 404 (Calming Ambient Sleep, BigYard v1/v2 all broke this way).
   // For playlist links, re-read the cover from oEmbed on every render (fetch is cached 24h in
   // lib/spotify.js) and persist it when it changed, so the page never shows a dead image.
-  if (link.spotifyUrl && /\/playlist\//.test(link.spotifyUrl) && link.coverUrl && !updates.coverUrl) {
+  if (link.spotifyUrl && /\/playlist\//.test(link.spotifyUrl) && link.coverUrl && !updates.coverUrl && !link.coverLocked) {
     try {
       const meta = await fetchSpotifyMeta(link.spotifyUrl);
       if (meta?.thumbnailUrl && meta.thumbnailUrl !== link.coverUrl) {

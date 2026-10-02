@@ -61,7 +61,7 @@ export async function PUT(request) {
     const allowedFields = [
       'title', 'artist', 'spotifyUrl', 'appleMusicUrl', 'soundcloudUrl',
       'coverUrl', 'genre', 'subgenre', 'bgColor', 'fbPixelId', 'fbAccessToken',
-      'spotifyOnly',
+      'spotifyOnly', 'coverLocked',
     ];
 
     const updates = {};
