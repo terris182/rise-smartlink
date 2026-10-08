@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test tests/api-key.test.mjs"
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "chart.js": "^4.5.1",

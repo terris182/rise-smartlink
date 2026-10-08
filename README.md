@@ -90,6 +90,66 @@ Content-Type: application/json
 
 The page is then live at `https://yourdomain.com/my-new-song`
 
+### Reuse an Existing Link (find-or-create)
+
+By default `POST /api/create-link` always mints a new slug and appends `-1`, `-2` when the slug is taken. When ad setup is resumed this produces a second link (for example `leela-1`) for the same song, which splits traffic and pixel data. Callers that want the existing link back can opt in.
+
+**Opt-in flag on create-link**
+
+```bash
+POST /api/create-link
+Content-Type: application/json
+
+{
+  "spotifyUrl": "https://open.spotify.com/track/<trackId>?si=abc",
+  "artist": "Artist Name",
+  "reuseExisting": true,
+  "dealId": "12345"
+}
+```
+
+- `reuseExisting` (boolean, or the string `"true"`): when set, the existing link for the same song is returned instead of creating a new one. When omitted or false, behavior and response are exactly as before.
+- `dealId` (optional string): stored in the reuse index when a new link is created. When `reuseExisting` is set it is checked first.
+
+Match order when `reuseExisting` is set:
+
+1. `dealId`, if it was indexed when a link was created and that link points at the same Spotify track (or the request is not a track URL).
+2. Spotify track id plus artist. The track id is parsed from the URL, so `?si=` and other query strings do not matter. The artist is the name from the request, or the one fetched from Spotify when omitted.
+3. For links created before the index existed: if the generated slug or one of its `-N` variants (`leela`, `leela-1`, and so on) already points at the same track id, that link is returned. This is a read only check.
+
+Only Spotify track URLs are matched by song. Album and playlist URLs fall through to normal creation unless a `dealId` match exists.
+
+**Response**
+
+Same shape as a normal create, plus `reused: true`:
+
+```json
+{
+  "success": true,
+  "link": { "slug": "artist/leela", "title": "Leela", "artist": "Artist", "spotifyUrl": "https://open.spotify.com/track/<trackId>" },
+  "url": "https://gudmuzik.com/artist/leela",
+  "reused": true
+}
+```
+
+`link` carries the same fields a normal create returns. `reused` is absent when a new link was created.
+
+**Lookup endpoint**
+
+```
+GET /api/find-link?spotifyUrl=<spotify track url>&artist=<artist name>
+GET /api/find-link?dealId=<deal id>
+```
+
+Read only, no auth, same posture as `/api/get-link`. Returns `200` with `{ success, link, url, matchedBy }` where `link` has the same fields as `/api/get-link` (access token and pixel id stripped) and `matchedBy` is `"dealId"` or `"spotifyTrack"`. Returns `404` when nothing matches and `400` when neither param is given.
+
+**Index notes**
+
+- Index entries (`linkidx:track:<trackId>:<artistSlug>` and `linkidx:deal:<dealId>`) are written only when a new link is created, never on reuse, and never overwrite an existing entry, so the first link for a song stays canonical.
+- No existing links are modified or deleted. Links created before this change are not indexed (no backfill); they are found only through the slug variant check above.
+- Lookups re-read the link and re-check its Spotify track id, so a stale index entry never returns a different song.
+- Run the matcher tests with `npm test`.
+
 ### API key for create-link and update-link (optional)
 
 `POST /api/create-link` and `PUT`/`POST /api/update-link` can require a shared key. The check is off until `SMARTLINK_API_KEY` is set in the environment, so nothing changes until then. When it is set, send the key in either header form:

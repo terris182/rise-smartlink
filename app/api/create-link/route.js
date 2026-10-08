@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createLink, getLink } from '@/lib/links';
+import { createLink, getLink, findLinkBySpotifyTrack, findLinkByDeal } from '@/lib/links';
+import { parseSpotifyTrackId, isSlugVariant } from '@/lib/link-match';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
@@ -27,13 +28,19 @@ import { checkApiKey } from '@/lib/api-key';
  *   genre?: string,         // Genre for CAPI retargeting (optional)
  *   subgenre?: string,      // Subgenre for CAPI retargeting (optional)
  *   bgColor?: string,       // Background color hex (optional)
+ *   reuseExisting?: boolean,// Opt-in: return the existing link for the same song instead of minting a new slug
+ *   dealId?: string,        // Optional deal id; indexed on create and matched first when reuseExisting is set
  * }
  *
  * Response: {
  *   success: true,
  *   link: { ...linkData },
- *   url: "https://gudmuzik.com/my-song"
+ *   url: "https://gudmuzik.com/my-song",
+ *   reused?: true           // Only present when reuseExisting returned an existing link
  * }
+ *
+ * Without reuseExisting the behavior is unchanged: a new slug is always minted
+ * (with -1, -2 appended on collision).
  */
 export async function POST(request) {
   try {
@@ -46,7 +53,7 @@ export async function POST(request) {
 
     // Normalize junk values some API clients (e.g. Bubble) send for blank params
     const junk = (v) => v === null || v === undefined || v === '' || v === 'null' || v === 'undefined';
-    for (const k of ['title', 'artist', 'coverUrl', 'appleMusicUrl', 'genre', 'subgenre', 'slug', 'bgColor']) {
+    for (const k of ['title', 'artist', 'coverUrl', 'appleMusicUrl', 'genre', 'subgenre', 'slug', 'bgColor', 'dealId']) {
       if (junk(body[k])) delete body[k];
     }
 
@@ -56,6 +63,30 @@ export async function POST(request) {
         { error: 'Missing required field: spotifyUrl' },
         { status: 400 }
       );
+    }
+
+    const host = request.headers.get('host') || 'gudmuzik.com';
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+
+    // ── Opt-in reuse: hand back the link already built for this song ──
+    const reuseExisting = body.reuseExisting === true || body.reuseExisting === 'true';
+    const requestedTrackId = parseSpotifyTrackId(body.spotifyUrl);
+    const reusedResponse = (existing) => {
+      const { fbAccessToken, ...safeExisting } = existing;
+      return NextResponse.json({
+        success: true,
+        link: safeExisting,
+        url: `${protocol}://${host}/${existing.slug}`,
+        reused: true,
+      });
+    };
+
+    if (reuseExisting && body.dealId) {
+      const byDeal = await findLinkByDeal(body.dealId);
+      // Never hand back a deal's link for a different track
+      if (byDeal && (!requestedTrackId || parseSpotifyTrackId(byDeal.spotifyUrl) === requestedTrackId)) {
+        return reusedResponse(byDeal);
+      }
     }
 
     // Auto-fetch metadata from multiple sources, in priority order
@@ -91,6 +122,11 @@ export async function POST(request) {
 
     if (!title) title = 'Untitled';
     if (!artist) artist = '';
+
+    if (reuseExisting && requestedTrackId) {
+      const byTrack = await findLinkBySpotifyTrack(requestedTrackId, artist);
+      if (byTrack) return reusedResponse(byTrack);
+    }
 
     // spotifyOnly links (Active Listener campaigns) skip Apple Music resolution entirely
     const spotifyOnly = body.spotifyOnly === true || body.spotifyOnly === 'true';
@@ -159,9 +195,24 @@ export async function POST(request) {
     }
 
     // If slug exists, append sequential serial number (-1, -2, etc.)
-    if (await getLink(slug)) {
+    const baseExisting = await getLink(slug);
+    if (baseExisting) {
+      // Reuse fallback for links created before the reuse index existed:
+      // if the slug or one of its -N variants already points at this track,
+      // return that link (read only, nothing is written).
+      if (reuseExisting && requestedTrackId && parseSpotifyTrackId(baseExisting.spotifyUrl) === requestedTrackId) {
+        return reusedResponse(baseExisting);
+      }
       let serial = 1;
-      while (await getLink(`${slug}-${serial}`)) {
+      let variant;
+      while ((variant = await getLink(`${slug}-${serial}`))) {
+        if (
+          reuseExisting && requestedTrackId &&
+          isSlugVariant(variant.slug || `${slug}-${serial}`, slug) &&
+          parseSpotifyTrackId(variant.spotifyUrl) === requestedTrackId
+        ) {
+          return reusedResponse(variant);
+        }
         serial++;
       }
       slug = `${slug}-${serial}`;
@@ -177,8 +228,6 @@ export async function POST(request) {
     });
 
     // Build the full URL using the request host or fallback to gudmuzik.com
-    const host = request.headers.get('host') || 'gudmuzik.com';
-    const protocol = host.includes('localhost') ? 'http' : 'https';
     const fullUrl = `${protocol}://${host}/${slug}`;
 
     // Strip sensitive fields from response
