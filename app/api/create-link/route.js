@@ -5,6 +5,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
+import { checkApiKey } from '@/lib/api-key';
 
 /**
  * POST /api/create-link
@@ -43,6 +44,11 @@ import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
  */
 export async function POST(request) {
   try {
+    const keyCheck = checkApiKey(request);
+    if (!keyCheck.ok) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
 
     // Normalize junk values some API clients (e.g. Bubble) send for blank params

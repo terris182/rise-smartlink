@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { getLink, updateLink } from '@/lib/links';
+import { checkApiKey } from '@/lib/api-key';
 
 /**
  * PUT /api/update-link
@@ -30,6 +31,11 @@ import { getLink, updateLink } from '@/lib/links';
  */
 export async function PUT(request) {
   try {
+    const keyCheck = checkApiKey(request);
+    if (!keyCheck.ok) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
 
     if (!body.slug) {
