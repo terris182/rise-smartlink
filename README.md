@@ -90,6 +90,26 @@ Content-Type: application/json
 
 The page is then live at `https://yourdomain.com/my-new-song`
 
+### API key for create-link and update-link (optional)
+
+`POST /api/create-link` and `PUT`/`POST /api/update-link` can require a shared key. The check is off until `SMARTLINK_API_KEY` is set in the environment, so nothing changes until then. When it is set, send the key in either header form:
+
+```
+Authorization: Bearer <key>
+x-api-key: <key>
+```
+
+Requests with a missing or wrong key get `401 {"error":"Unauthorized"}`.
+
+**Bubble:** before the key is set, add one of these headers (for example `x-api-key`, marked Private) to every Bubble API Connector call that hits `create-link` or `update-link`. If the key is set first, those calls will start failing with 401.
+
+`/api/debug` is behind the dashboard login cookie (`gm_auth`) and returns 401 without it.
+
+### Tests
+```bash
+npm test
+```
+
 ### Custom Events Tracked
 
 | Event | When | Custom Data |

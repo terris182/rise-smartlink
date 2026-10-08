@@ -39,6 +39,7 @@ export function middleware(request) {
     pathname.startsWith('/api/fanpages') ||
     pathname.startsWith('/api/analytics') ||
     pathname.startsWith('/api/links') ||
+    pathname.startsWith('/api/debug') ||
     isCuratorApi
   ) {
     const token = request.cookies.get('gm_auth')?.value;
@@ -65,5 +66,5 @@ export function middleware(request) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/curator/:path*', '/fanpages/:path*', '/api/fanpages/:path*', '/api/analytics/:path*', '/api/links/:path*', '/api/curator/:path*'],
+  matcher: ['/dashboard/:path*', '/curator/:path*', '/fanpages/:path*', '/api/fanpages/:path*', '/api/analytics/:path*', '/api/links/:path*', '/api/debug/:path*', '/api/curator/:path*'],
 };
