@@ -27,7 +27,8 @@ export async function POST(request) {
     const job = await createJob(body);
     return NextResponse.json({ job });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 400 });
+    // 500 when the database rejected the write, 400 for bad input.
+    return NextResponse.json({ error: err.message }, { status: err.status === 500 ? 500 : 400 });
   }
 }
 
@@ -40,7 +41,8 @@ export async function PUT(request) {
     if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     return NextResponse.json({ job });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 400 });
+    // 500 when the database rejected the write, 400 for bad input.
+    return NextResponse.json({ error: err.message }, { status: err.status === 500 ? 500 : 400 });
   }
 }
 

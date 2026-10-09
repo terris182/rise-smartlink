@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { curatorConfigured, curateOnce } from '@/lib/spotify-curator';
-import { getJob, recordRun } from '@/lib/curator-jobs';
+import { getJob, runJobNow } from '@/lib/curator-jobs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -25,13 +25,11 @@ export async function POST(request) {
   const job = await getJob(jobId);
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
 
-  try {
-    const result = await curateOnce(job);
-    await recordRun(jobId, { ...result, at: new Date().toISOString() });
-    return NextResponse.json({ result });
-  } catch (err) {
-    const result = { ok: false, message: err.message, at: new Date().toISOString() };
-    await recordRun(jobId, result);
-    return NextResponse.json({ error: err.message, result }, { status: 502 });
+  // Same per-job lease as the cron route, so a manual run never overlaps a scheduled one.
+  const r = await runJobNow(job, curateOnce);
+  if (r.skipped) {
+    return NextResponse.json({ error: `Job not run: ${r.skipped}`, skipped: r.skipped }, { status: r.held ? 409 : 503 });
   }
+  if (r.error) return NextResponse.json({ error: r.error.message, result: r.result }, { status: 502 });
+  return NextResponse.json({ result: r.result });
 }
