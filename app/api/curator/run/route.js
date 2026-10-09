@@ -28,7 +28,7 @@ export async function POST(request) {
   // Same per-job lease as the cron route, so a manual run never overlaps a scheduled one.
   const r = await runJobNow(job, curateOnce);
   if (r.skipped) {
-    return NextResponse.json({ error: `Job not run: ${r.skipped}`, skipped: r.skipped }, { status: 409 });
+    return NextResponse.json({ error: `Job not run: ${r.skipped}`, skipped: r.skipped }, { status: r.held ? 409 : 503 });
   }
   if (r.error) return NextResponse.json({ error: r.error.message, result: r.result }, { status: 502 });
   return NextResponse.json({ result: r.result });
