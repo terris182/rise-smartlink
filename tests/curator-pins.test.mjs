@@ -186,3 +186,39 @@ test('(i) insert mode with pins: new submission lands below the pins', async () 
   assert.deepEqual(after.slice(0, 5), PIN_URIS);
   assert.ok(after.indexOf(uri('Song J')) >= 5);
 });
+
+test('(r4) submissions are cleared only after reorder ok and pins verified; kept on failure', async () => {
+  // failure 1: pins do not verify (Spotify ignores the moves)
+  let j = job({ mode: 'insert', sourcePlaylistId: `SRCA${jobSeq}`, pinnedUris: PIN_URIS, removeFromSource: true });
+  fake.setPlaylist(j.targetPlaylistId, [trackItem('Intruder'), ...base().filter((it) => it.track.name !== 'Song J')]);
+  fake.setPlaylist(j.sourcePlaylistId, [trackItem('Song J')]);
+  fake.dropMoves = true;
+  let r = await curateOnce(j);
+  fake.dropMoves = false;
+  assert.equal(r.ok, false);
+  assert.equal(r.pinnedCheck, 'mismatch');
+  assert.deepEqual(fake.uris(j.sourcePlaylistId), [uri('Song J')], 'submission kept for the next run');
+  assert.equal(r.removedFromSource, 0);
+
+  // failure 2: reorder refused (membership changed mid-run)
+  j = job({ mode: 'insert', sourcePlaylistId: `SRCB${jobSeq}`, pinnedUris: PIN_URIS, removeFromSource: true });
+  fake.setPlaylist(j.targetPlaylistId, base().filter((it) => it.track.name !== 'Song J'));
+  fake.setPlaylist(j.sourcePlaylistId, [trackItem('Song J')]);
+  let injected = false;
+  fake.onRequest = (req, f) => {
+    if (!injected && req.path === '/audio-features') { injected = true; f.items(j.targetPlaylistId).push(trackItem('Intruder')); }
+  };
+  r = await curateOnce(j);
+  fake.onRequest = null;
+  assert.equal(r.ok, false);
+  assert.deepEqual(fake.uris(j.sourcePlaylistId), [uri('Song J')], 'submission kept after a refused reorder');
+
+  // success: submissions cleared
+  j = job({ mode: 'insert', sourcePlaylistId: `SRCC${jobSeq}`, pinnedUris: PIN_URIS, removeFromSource: true });
+  fake.setPlaylist(j.targetPlaylistId, base().filter((it) => it.track.name !== 'Song J'));
+  fake.setPlaylist(j.sourcePlaylistId, [trackItem('Song J')]);
+  r = await curateOnce(j);
+  assert.equal(r.ok, true, r.message);
+  assert.deepEqual(fake.uris(j.sourcePlaylistId), [], 'submission cleared after a verified run');
+  assert.equal(r.removedFromSource, 1);
+});

@@ -45,6 +45,44 @@ test('(g2) a job that already ran successfully this PST hour slot is skipped', a
   assert.deepEqual(out.skipped.map((s) => [s.id, s.reason]), [[j.id, 'already ran this slot']]);
 });
 
+test('(r1) Mac runner at :05: a job Vercel already ran is reported in runs as ok + skipped, so no false alarm', async () => {
+  await reset();
+  const j = await daily('ran-at-00', [10]);
+  await recordRun(j.id, { ok: true, message: 'Refreshed at :00', at: AT_1000.toISOString() }, AT_1000);
+  const curate = fakeCurate();
+  const out = await runScheduledJobs({ force: true, now: AT_1005, curate });
+  assert.deepEqual(curate.calls, []);
+  assert.equal(out.ran, 0, 'ran counts real executions only');
+  assert.equal(out.runs.length, 1);
+  const r = out.runs[0];
+  assert.equal(r.id, j.id);
+  assert.equal(r.ok, true);
+  assert.equal(r.skipped, true);
+  assert.equal(r.reason, 'already ran this slot');
+  assert.equal(r.lastResult.ok, true);
+  assert.equal(r.lastResult.message, 'Refreshed at :00');
+});
+
+test('(r3) stale job list: a run finished between the list read and the lease is skipped without recordRun or curate', async () => {
+  await reset();
+  const j = await daily('race', [10]);
+  const stale = await getAllJobs(); // read before the :00 run recorded its result
+  await recordRun(j.id, { ok: true, message: 'Refreshed at :00', at: AT_1000.toISOString() }, AT_1000);
+  const before = await getJob(j.id);
+  const curate = fakeCurate();
+  const out = await runScheduledJobs({ jobs: stale, force: true, now: AT_1005, curate });
+  assert.deepEqual(curate.calls, [], 'Spotify never touched');
+  const after = await getJob(j.id);
+  assert.deepEqual(after.lastResult, before.lastResult, 'successful lastResult not overwritten');
+  assert.equal(after.lastRun, before.lastRun);
+  assert.equal(out.runs[0].ok, true);
+  assert.equal(out.runs[0].skipped, true);
+  assert.equal(out.runs[0].reason, 'already ran this slot');
+  const lease = await acquireLease(j.id, { now: AT_1005 });
+  assert.equal(lease.ok, true, 'lease released after the skip');
+  await releaseLease(j.id, lease.token);
+});
+
 test('(g3) a job whose run this slot FAILED is retried by the :05 runner', async () => {
   await reset();
   const j = await daily('failed', [10]);
@@ -71,7 +109,13 @@ test('(g5) a job whose lease is held by another run is skipped, even with overri
   const curate = fakeCurate();
   const out = await runScheduledJobs({ force: true, override: true, now: AT_1005, curate });
   assert.deepEqual(curate.calls, []);
-  assert.equal(out.skipped[0].reason, 'lease held by another run');
+  assert.equal(out.skipped[0].reason, 'lease held');
+  assert.equal(out.ran, 0);
+  assert.deepEqual(
+    out.runs.map((r) => [r.id, r.ok, r.skipped, r.reason]),
+    [[j.id, true, true, 'lease held']],
+    'lease-held skip also appears in runs as ok + skipped'
+  );
   await releaseLease(j.id, lease.token);
   const again = await runScheduledJobs({ force: true, now: AT_1005, curate });
   assert.deepEqual(curate.calls, [j.id]);
@@ -108,7 +152,7 @@ test('(g8) manual run respects the lease', async () => {
   const lease = await acquireLease(j.id);
   const curate = fakeCurate();
   const r = await runJobNow(await getJob(j.id), curate);
-  assert.equal(r.skipped, 'lease held by another run');
+  assert.equal(r.skipped, 'lease held');
   assert.deepEqual(curate.calls, []);
   await releaseLease(j.id, lease.token);
   const r2 = await runJobNow(await getJob(j.id), curate);
@@ -124,13 +168,49 @@ test('pinnedUris validation: unique, 1..excludeTopN, Spotify track URIs', async 
   assert.equal(noPins.pinnedUris, null);
   await assert.rejects(createJob({ name: 'd', targetPlaylistId: 't', mode: 'refresh', pinnedUris: [PIN(1), PIN(1)] }), /unique/i);
   await assert.rejects(createJob({ name: 'e', targetPlaylistId: 't', mode: 'refresh', pinnedUris: [] }), /pinnedUris/);
-  await assert.rejects(
-    createJob({ name: 'l', targetPlaylistId: 't', mode: 'refresh', excludeTopN: 2, pinnedUris: [PIN(1), PIN(2), PIN(3)] }),
-    /excludeTopN/
-  );
+  const raised = await createJob({ name: 'l', targetPlaylistId: 't', mode: 'refresh', excludeTopN: 2, pinnedUris: [PIN(1), PIN(2), PIN(3)] });
+  assert.equal(raised.excludeTopN, 5, 'excludeTopN raised to max(5, pins) instead of rejecting');
   await assert.rejects(createJob({ name: 'b', targetPlaylistId: 't', pinnedUris: ['not-a-uri'] }), /spotify:track/);
   const cleared = await jobs.updateJob(ok.id, { pinnedUris: null });
   assert.equal(cleared.pinnedUris, null);
   const kept = await jobs.updateJob(ok.id, { name: 'renamed' });
   assert.equal(kept.pinnedUris, null);
+});
+
+test('(r2) PUT with only { id, pinnedUris: 5 uris } succeeds on a job that had excludeTopN 3', async () => {
+  await reset();
+  const old = await createJob({ name: 'old', targetPlaylistId: 't', mode: 'refresh' });
+  assert.equal(old.excludeTopN, 3);
+  const five = [1, 2, 3, 4, 5].map(PIN);
+  const upd = await jobs.updateJob(old.id, { id: old.id, pinnedUris: five });
+  assert.deepEqual(upd.pinnedUris, five);
+  assert.equal(upd.excludeTopN, 5);
+  const six = [1, 2, 3, 4, 5, 6].map(PIN);
+  const upd6 = await jobs.updateJob(old.id, { id: old.id, pinnedUris: six });
+  assert.equal(upd6.excludeTopN, 6, 'max(5, pinnedUris.length)');
+  const keep = await createJob({ name: 'big', targetPlaylistId: 't', mode: 'refresh', excludeTopN: 8, pinnedUris: five });
+  assert.equal(keep.excludeTopN, 8, 'a larger excludeTopN is kept');
+});
+
+test('(r5) persistence errors are thrown (route answers 500), not reported as success', async () => {
+  const { FakeSupabase } = await import('./helpers/fake-supabase.mjs');
+  const db = new FakeSupabase();
+  jobs.__setTestClient(db);
+  try {
+    const j = await createJob({ name: 'db', targetPlaylistId: 't', mode: 'refresh' });
+    assert.equal(db.rows.has(j.id), true);
+    db.failWrites = 'database is read-only';
+    await assert.rejects(jobs.updateJob(j.id, { id: j.id, name: 'renamed' }), (err) => {
+      assert.equal(err.status, 500);
+      assert.match(err.message, /database is read-only/);
+      return true;
+    });
+    await assert.rejects(createJob({ name: 'x', targetPlaylistId: 't' }), (err) => err.status === 500);
+    assert.equal((await getJob(j.id)).name, 'db', 'stored job unchanged');
+    // validation errors stay 400-class (no status 500)
+    db.failWrites = null;
+    await assert.rejects(jobs.updateJob(j.id, { pinnedUris: ['bad'] }), (err) => err.status !== 500);
+  } finally {
+    jobs.__setTestClient(null);
+  }
 });
