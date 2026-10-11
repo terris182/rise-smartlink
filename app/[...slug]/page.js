@@ -3,7 +3,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
-import { resolveOtherDsps, dspUpdates } from '@/lib/dsp-resolver';
+import { resolveOtherDsps, dspUpdates, wantsOtherDsps, visibleOtherDsps } from '@/lib/dsp-resolver';
 import { notFound } from 'next/navigation';
 import SmartLinkClient from './SmartLinkClient';
 
@@ -173,8 +173,8 @@ async function resolveLink(slug) {
   }
 
   // ── Step 7: YouTube, Amazon Music, Deezer (WHI-2080) ──
-  // Same gate as Apple Music: spotifyOnly links stay Spotify-only. Only empty fields are filled.
-  if (!link.spotifyOnly && link.artist && link.title &&
+  // Only links created with includeOtherDsps (Active Listener) get these. Only empty fields are filled.
+  if (wantsOtherDsps(link) && link.artist && link.title &&
       (!link.youtubeUrl || !link.amazonMusicUrl || !link.deezerUrl)) {
     try {
       const resolved = await resolveOtherDsps({
@@ -243,10 +243,9 @@ export default async function SmartLinkPage({ params }) {
     coverUrl: link.coverUrl,
     spotifyUrl: link.spotifyUrl,
     appleMusicUrl: link.appleMusicUrl || '',
-    // WHI-2080: spotifyOnly links keep showing only Spotify, even if these were stored earlier
-    youtubeUrl: link.spotifyOnly ? '' : (link.youtubeUrl || ''),
-    amazonMusicUrl: link.spotifyOnly ? '' : (link.amazonMusicUrl || ''),
-    deezerUrl: link.spotifyOnly ? '' : (link.deezerUrl || ''),
+    // WHI-2080: shown only when the link opted in (includeOtherDsps); never for spotifyOnly
+    ...visibleOtherDsps(link),
+    includeOtherDsps: wantsOtherDsps(link),
     genre: link.genre || '',
     subgenre: link.subgenre || '',
     fbPixelId: link.fbPixelId || '',

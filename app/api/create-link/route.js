@@ -6,7 +6,7 @@ import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
 import { checkApiKey } from '@/lib/api-key';
-import { resolveOtherDsps, dspUpdates } from '@/lib/dsp-resolver';
+import { resolveOtherDsps, dspUpdates, includeOtherDspsFromBody } from '@/lib/dsp-resolver';
 
 /**
  * POST /api/create-link
@@ -14,7 +14,7 @@ import { resolveOtherDsps, dspUpdates } from '@/lib/dsp-resolver';
  *
  * Required: spotifyUrl
  * Optional: title (headline), artist (subtext), slug, appleMusicUrl, youtubeUrl, amazonMusicUrl,
- *           deezerUrl, spotifyOnly, genre, subgenre, bgColor
+ *           deezerUrl, spotifyOnly, includeOtherDsps, genre, subgenre, bgColor
  *
  * - Auto-fetches artwork from Spotify oEmbed
  * - Auto-resolves Apple Music URL via Songlink/Odesli API
@@ -166,9 +166,10 @@ export async function POST(request) {
     // Note: Step 6 (standalone AMP text search) removed — resolveAppleMusicByIsrc
     // already includes AMP text search as Strategy B internally.
 
-    // ── Step 7: YouTube, Amazon Music, Deezer (WHI-2080), same gate as Apple Music ──
+    // ── Step 7: YouTube, Amazon Music, Deezer (WHI-2080), only when includeOtherDsps ──
     let otherDsps = {};
-    if (!spotifyOnly && artist && title) {
+    const includeOtherDsps = includeOtherDspsFromBody(body);
+    if (includeOtherDsps && !spotifyOnly && artist && title) {
       try {
         const resolved = await resolveOtherDsps({
           artist, title, isrc: spotifyIsrc, spotifyUrl: body.spotifyUrl, existing: body,
@@ -241,6 +242,7 @@ export async function POST(request) {
       coverUrl: coverUrl || '',
       appleMusicUrl: appleMusicUrl || '',
       ...otherDsps,
+      includeOtherDsps,
     });
 
     // Build the full URL using the request host or fallback to gudmuzik.com

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { getLink, updateLink } from '@/lib/links';
 import { checkApiKey } from '@/lib/api-key';
+import { parseIncludeFlag } from '@/lib/dsp-resolver';
 
 /**
  * PUT /api/update-link
@@ -68,13 +69,14 @@ export async function PUT(request) {
       'title', 'artist', 'spotifyUrl', 'appleMusicUrl', 'soundcloudUrl',
       'coverUrl', 'genre', 'subgenre', 'bgColor', 'fbPixelId', 'fbAccessToken',
       'spotifyOnly', 'coverLocked',
-      'youtubeUrl', 'amazonMusicUrl', 'deezerUrl',
+      'youtubeUrl', 'amazonMusicUrl', 'deezerUrl', 'includeOtherDsps',
     ];
 
     const updates = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
-        updates[field] = body[field];
+        updates[field] = field === 'includeOtherDsps' ? parseIncludeFlag(body[field]) : body[field];
+        if (updates[field] === undefined) delete updates[field];
       }
     }
 

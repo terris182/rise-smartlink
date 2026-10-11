@@ -84,3 +84,61 @@ test('fills empties from YouTube and Deezer, and playlists are skipped', async (
     delete process.env.YOUTUBE_API_KEY;
   }
 });
+
+// ── Round 2: only links created for Active Listener opt in ──
+import {
+  includeOtherDspsFromBody,
+  parseIncludeFlag,
+  wantsOtherDsps,
+  visibleOtherDsps,
+} from '../lib/dsp-resolver.js';
+
+test('(a) create with spotifyOnly false opts in', () => {
+  assert.equal(includeOtherDspsFromBody({ spotifyOnly: false }), true);
+});
+
+test('(b) create with spotifyOnly "false" (Bubble text) opts in', () => {
+  assert.equal(includeOtherDspsFromBody({ spotifyOnly: 'false' }), true);
+});
+
+test('(c) create with no spotifyOnly stays legacy (no opt in)', () => {
+  assert.equal(includeOtherDspsFromBody({}), false);
+  assert.equal(includeOtherDspsFromBody({ spotifyOnly: undefined }), false);
+  assert.equal(includeOtherDspsFromBody({ spotifyOnly: 'junk' }), false);
+});
+
+test('explicit includeOtherDsps true (boolean or text) opts in; update flag parses', () => {
+  assert.equal(includeOtherDspsFromBody({ includeOtherDsps: true }), true);
+  assert.equal(includeOtherDspsFromBody({ includeOtherDsps: 'true' }), true);
+  assert.equal(includeOtherDspsFromBody({ includeOtherDsps: 'false' }), false);
+  assert.equal(parseIncludeFlag('true'), true);
+  assert.equal(parseIncludeFlag(false), false);
+  assert.equal(parseIncludeFlag('false'), false);
+  assert.equal(parseIncludeFlag('maybe'), undefined);
+});
+
+test('(d) spotifyOnly true shows nothing but Spotify, even with the flag and stored urls', () => {
+  const link = {
+    spotifyOnly: true, includeOtherDsps: true,
+    youtubeUrl: 'https://youtu.be/x', amazonMusicUrl: 'https://music.amazon.com/x', deezerUrl: 'https://www.deezer.com/track/1',
+  };
+  assert.equal(wantsOtherDsps(link), false);
+  assert.deepEqual(visibleOtherDsps(link), { youtubeUrl: '', amazonMusicUrl: '', deezerUrl: '' });
+});
+
+test('(e) stored DSP urls without the flag are not rendered or resolved', () => {
+  const link = {
+    spotifyOnly: false,
+    youtubeUrl: 'https://youtu.be/x', amazonMusicUrl: 'https://music.amazon.com/x', deezerUrl: 'https://www.deezer.com/track/1',
+  };
+  assert.equal(wantsOtherDsps(link), false);
+  assert.deepEqual(visibleOtherDsps(link), { youtubeUrl: '', amazonMusicUrl: '', deezerUrl: '' });
+  assert.equal(wantsOtherDsps({ ...link, includeOtherDsps: false }), false);
+  assert.equal(wantsOtherDsps({ ...link, includeOtherDsps: 'true' }), false);
+});
+
+test('a link with the flag shows its stored urls', () => {
+  const link = { includeOtherDsps: true, amazonMusicUrl: 'https://music.amazon.com/x', deezerUrl: 'https://www.deezer.com/track/1' };
+  assert.equal(wantsOtherDsps(link), true);
+  assert.deepEqual(visibleOtherDsps(link), { youtubeUrl: '', amazonMusicUrl: link.amazonMusicUrl, deezerUrl: link.deezerUrl });
+});
