@@ -6,7 +6,7 @@ import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
 import { checkApiKey } from '@/lib/api-key';
-import { resolveOtherDsps, dspUpdates, includeOtherDspsFromBody } from '@/lib/dsp-resolver';
+import { resolveOtherDsps, dspUpdates, includeOtherDspsFromBody, validateDspInput, dspResponseFields } from '@/lib/dsp-resolver';
 
 /**
  * POST /api/create-link
@@ -55,9 +55,16 @@ export async function POST(request) {
 
     // Normalize junk values some API clients (e.g. Bubble) send for blank params
     const junk = (v) => v === null || v === undefined || v === '' || v === 'null' || v === 'undefined';
-    for (const k of ['title', 'artist', 'coverUrl', 'appleMusicUrl', 'youtubeUrl', 'amazonMusicUrl', 'deezerUrl', 'genre', 'subgenre', 'slug', 'bgColor', 'dealId']) {
+    for (const k of ['title', 'artist', 'coverUrl', 'appleMusicUrl', 'youtubeUrl', 'amazonMusicUrl', 'deezerUrl', 'youtubeCheckedAt', 'genre', 'subgenre', 'slug', 'bgColor', 'dealId']) {
       if (junk(body[k])) delete body[k];
     }
+
+    // WHI-2080: client-supplied YouTube / Amazon Music / Deezer links must be https on the allowed domains
+    const dspCheck = validateDspInput(body);
+    if (dspCheck.errors.length > 0) {
+      return NextResponse.json({ error: dspCheck.errors.join('; ') }, { status: 400 });
+    }
+    Object.assign(body, dspCheck.values);
 
     // Validate required fields
     if (!body.spotifyUrl) {
@@ -78,6 +85,7 @@ export async function POST(request) {
       return NextResponse.json({
         success: true,
         link: safeExisting,
+        ...dspResponseFields(existing),
         url: `${protocol}://${host}/${existing.slug}`,
         reused: true,
       });
@@ -172,7 +180,7 @@ export async function POST(request) {
     if (includeOtherDsps && !spotifyOnly && artist && title) {
       try {
         const resolved = await resolveOtherDsps({
-          artist, title, isrc: spotifyIsrc, spotifyUrl: body.spotifyUrl, existing: body,
+          artist, title, isrc: spotifyIsrc, spotifyUrl: body.spotifyUrl, existing: body, force: true,
         });
         otherDsps = dspUpdates(body, resolved);
       } catch (err) {
@@ -254,6 +262,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       link: safeLink,
+      ...dspResponseFields(link),
       url: fullUrl,
     });
   } catch (err) {

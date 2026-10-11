@@ -78,7 +78,7 @@ test('fills empties from YouTube and Deezer, and playlists are skipped', async (
       artist: 'Art Two', title: 'Song Two',
       spotifyUrl: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', existing: {},
     });
-    assert.deepEqual(playlist, { youtubeUrl: '', amazonMusicUrl: '', deezerUrl: '' });
+    assert.deepEqual(playlist, { youtubeUrl: '', amazonMusicUrl: '', deezerUrl: '', youtubeCheckedAt: '' });
   } finally {
     globalThis.fetch = realFetch;
     delete process.env.YOUTUBE_API_KEY;
@@ -142,4 +142,189 @@ test('a link with the flag shows its stored urls', () => {
   const link = { includeOtherDsps: true, amazonMusicUrl: 'https://music.amazon.com/x', deezerUrl: 'https://www.deezer.com/track/1' };
   assert.equal(wantsOtherDsps(link), true);
   assert.deepEqual(visibleOtherDsps(link), { youtubeUrl: '', amazonMusicUrl: link.amazonMusicUrl, deezerUrl: link.deezerUrl });
+});
+
+// ── Round 3: quota guard, URL allowlist, servicesText, strict flags ──
+import {
+  youtubeDue,
+  isAllowedDspUrl,
+  validateDspInput,
+  servicesText,
+  joinNames,
+  dspResponseFields,
+} from '../lib/dsp-resolver.js';
+
+function stubFetch({ youtubeCalls, deezerLink = 'https://www.deezer.com/track/7' }) {
+  return async (url) => {
+    const u = String(url);
+    if (u.includes('googleapis.com/youtube')) {
+      youtubeCalls.n++;
+      return { ok: true, status: 200, json: async () => ({ items: [item('vidR3', 'Quota Song', 'Quota Artist - Topic')] }) };
+    }
+    if (u.includes('api.deezer.com/search')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ data: [{ title: 'Quota Song', title_short: 'Quota Song', artist: { name: 'Quota Artist' }, link: deezerLink, isrc: 'X' }] }),
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+}
+
+test('youtubeDue: never checked, stale, fresh, has url, bad dates', () => {
+  const now = Date.parse('2026-10-11T12:00:00Z');
+  assert.equal(youtubeDue({}, now), true);
+  assert.equal(youtubeDue({ youtubeCheckedAt: 'garbage' }, now), true);
+  assert.equal(youtubeDue({ youtubeCheckedAt: '2026-10-11T11:00:00Z' }, now), false);
+  assert.equal(youtubeDue({ youtubeCheckedAt: '2026-10-10T12:00:01Z' }, now), false);
+  assert.equal(youtubeDue({ youtubeCheckedAt: '2026-10-10T12:00:00Z' }, now), true);
+  assert.equal(youtubeDue({ youtubeCheckedAt: '2027-01-01T00:00:00Z' }, now), true);
+  assert.equal(youtubeDue({ youtubeUrl: 'https://youtu.be/x' }, now), false);
+});
+
+test('YouTube search runs once at create (force), is stamped, and is skipped at render within 24 h', async () => {
+  const realFetch = globalThis.fetch;
+  process.env.YOUTUBE_API_KEY = 'test-key';
+  const youtubeCalls = { n: 0 };
+  globalThis.fetch = stubFetch({ youtubeCalls });
+  try {
+    const first = await resolveOtherDsps({ artist: 'Quota Artist', title: 'Quota Song', spotifyUrl: TRACK_URL, existing: {}, force: true });
+    assert.equal(youtubeCalls.n, 1);
+    assert.equal(first.youtubeUrl, 'https://www.youtube.com/watch?v=vidR3');
+    assert.ok(Number.isFinite(Date.parse(first.youtubeCheckedAt)));
+    assert.equal(dspUpdates({}, first).youtubeCheckedAt, first.youtubeCheckedAt);
+
+    // a link that was checked a minute ago and missed: render does not search again
+    const recent = { youtubeCheckedAt: new Date(Date.now() - 60000).toISOString() };
+    const render = await resolveOtherDsps({ artist: 'Quota Artist2', title: 'Quota Song2', spotifyUrl: TRACK_URL, existing: recent });
+    assert.equal(youtubeCalls.n, 1);
+    assert.equal(render.youtubeUrl, '');
+    assert.equal(render.youtubeCheckedAt, recent.youtubeCheckedAt);
+
+    // never checked: render searches
+    await resolveOtherDsps({ artist: 'Quota Artist3', title: 'Quota Song3', spotifyUrl: TRACK_URL, existing: {} });
+    assert.equal(youtubeCalls.n, 2);
+
+    // stale (25 h): render searches again
+    const stale = { youtubeCheckedAt: new Date(Date.now() - 25 * 3600 * 1000).toISOString() };
+    const again = await resolveOtherDsps({ artist: 'Quota Artist4', title: 'Quota Song4', spotifyUrl: TRACK_URL, existing: stale });
+    assert.equal(youtubeCalls.n, 3);
+    assert.notEqual(again.youtubeCheckedAt, stale.youtubeCheckedAt);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.YOUTUBE_API_KEY;
+  }
+});
+
+test('a YouTube miss is stamped too, and the in-memory miss cache is a second layer', async () => {
+  const realFetch = globalThis.fetch;
+  process.env.YOUTUBE_API_KEY = 'test-key';
+  let calls = 0;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('googleapis.com/youtube')) { calls++; return { ok: true, status: 200, json: async () => ({ items: [] }) }; }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  try {
+    const miss = await resolveOtherDsps({ artist: 'Miss Artist', title: 'Miss Song', spotifyUrl: TRACK_URL, existing: {}, force: true });
+    assert.equal(miss.youtubeUrl, '');
+    assert.ok(miss.youtubeCheckedAt);
+    // force again within 30 min: the miss cache blocks a second search
+    await resolveOtherDsps({ artist: 'Miss Artist', title: 'Miss Song', spotifyUrl: TRACK_URL, existing: {}, force: true });
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.YOUTUBE_API_KEY;
+  }
+});
+
+test('resolver values outside the allowlist are blanked and never persisted', async () => {
+  const realFetch = globalThis.fetch;
+  delete process.env.YOUTUBE_API_KEY;
+  globalThis.fetch = stubFetch({ youtubeCalls: { n: 0 }, deezerLink: 'https://evil.example/track/1' });
+  try {
+    const out = await resolveOtherDsps({ artist: 'Evil Artist', title: 'Evil Song', spotifyUrl: TRACK_URL, existing: {}, force: true });
+    assert.equal(out.deezerUrl, '');
+    assert.equal(dspUpdates({}, { deezerUrl: 'http://www.deezer.com/track/1' }).deezerUrl, undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('allowlist: YouTube', () => {
+  for (const ok of [
+    'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'https://youtube.com/watch?v=x', 'https://m.youtube.com/watch?v=x',
+    'https://music.youtube.com/watch?v=x', 'https://youtu.be/dQw4w9WgXcQ',
+  ]) assert.equal(isAllowedDspUrl('youtubeUrl', ok), true, ok);
+  for (const bad of [
+    'https://evil.example/x', 'http://www.youtube.com/watch?v=x', 'https://youtube.com.evil.example/x',
+    'https://evil.example/https://youtube.com', 'https://www.youtube.com@evil.example/x', 'https://user:pw@www.youtube.com/x',
+    'javascript:alert(1)', 'https://www.youtube.com:8443/x', '', null, 42, 'https://notyoutube.com/x',
+  ]) assert.equal(isAllowedDspUrl('youtubeUrl', bad), false, String(bad));
+});
+
+test('allowlist: Amazon Music', () => {
+  for (const ok of [
+    'https://music.amazon.com/search/a%20b', 'https://music.amazon.co.uk/albums/B0', 'https://music.amazon.de/x',
+    'https://music.amazon.co.jp/x', 'https://music.amazon.com.br/x', 'https://music.amazon.in/x',
+  ]) assert.equal(isAllowedDspUrl('amazonMusicUrl', ok), true, ok);
+  for (const bad of [
+    'https://amazon.com/music', 'https://www.amazon.com/x', 'http://music.amazon.com/x', 'https://music.amazon.evil.example/x',
+    'https://music.amazon.com.evil.example/x', 'https://evil.example/music.amazon.com', 'https://music.amazon.comx/x',
+  ]) assert.equal(isAllowedDspUrl('amazonMusicUrl', bad), false, bad);
+});
+
+test('allowlist: Deezer', () => {
+  for (const ok of ['https://www.deezer.com/track/1', 'https://deezer.com/track/1', 'https://deezer.page.link/abc'])
+    assert.equal(isAllowedDspUrl('deezerUrl', ok), true, ok);
+  for (const bad of ['https://api.deezer.com/track/1', 'http://www.deezer.com/track/1', 'https://deezer.com.evil.example/x', 'https://evil.example/deezer.com'])
+    assert.equal(isAllowedDspUrl('deezerUrl', bad), false, bad);
+  // a field is only valid for its own domains
+  assert.equal(isAllowedDspUrl('deezerUrl', 'https://www.youtube.com/watch?v=x'), false);
+});
+
+test('validateDspInput: rejects bad client values, allows blank to clear, checks the date', () => {
+  assert.deepEqual(validateDspInput({ title: 'x' }), { values: {}, errors: [] });
+  const bad = validateDspInput({ youtubeUrl: 'https://evil.example/x', deezerUrl: 'https://www.deezer.com/track/1' });
+  assert.equal(bad.errors.length, 1);
+  assert.match(bad.errors[0], /youtubeUrl/);
+  const ok = validateDspInput({ youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', amazonMusicUrl: '', youtubeCheckedAt: '2026-10-11T00:00:00Z' });
+  assert.deepEqual(ok.errors, []);
+  assert.equal(ok.values.amazonMusicUrl, '');
+  assert.equal(ok.values.youtubeCheckedAt, '2026-10-11T00:00:00.000Z');
+  assert.equal(validateDspInput({ youtubeCheckedAt: 'yesterday' }).errors.length, 1);
+  assert.equal(validateDspInput({ amazonMusicUrl: 5 }).errors.length, 1);
+});
+
+test('stored values outside the allowlist are never rendered', () => {
+  const link = { includeOtherDsps: true, youtubeUrl: 'https://evil.example/x', amazonMusicUrl: 'https://music.amazon.com/x', deezerUrl: 'javascript:alert(1)' };
+  assert.deepEqual(visibleOtherDsps(link), { youtubeUrl: '', amazonMusicUrl: 'https://music.amazon.com/x', deezerUrl: '' });
+});
+
+test('servicesText lists only present services, in order, without an Oxford comma', () => {
+  const all = {
+    spotifyUrl: 'https://open.spotify.com/track/1', appleMusicUrl: 'https://music.apple.com/x', includeOtherDsps: true,
+    youtubeUrl: 'https://youtu.be/x', amazonMusicUrl: 'https://music.amazon.com/x', deezerUrl: 'https://www.deezer.com/track/1',
+  };
+  assert.equal(servicesText(all), 'Spotify, Apple Music, YouTube, Amazon Music and Deezer');
+  assert.equal(servicesText({ ...all, youtubeUrl: '' }), 'Spotify, Apple Music, Amazon Music and Deezer');
+  assert.equal(servicesText({ ...all, appleMusicUrl: '', youtubeUrl: '', deezerUrl: '' }), 'Spotify and Amazon Music');
+  assert.equal(servicesText({ spotifyUrl: 'https://open.spotify.com/track/1' }), 'Spotify');
+  assert.equal(servicesText({ spotifyUrl: 'https://open.spotify.com/track/1', spotifyOnly: true, includeOtherDsps: true, deezerUrl: all.deezerUrl }), 'Spotify');
+  assert.equal(servicesText({ spotifyUrl: 'x', appleMusicUrl: 'y' }), 'Spotify and Apple Music');
+  assert.equal(joinNames([]), '');
+  assert.equal(joinNames(['A', 'B', 'C']), 'A, B and C');
+});
+
+test('dspResponseFields carries the fields the create / update responses need', () => {
+  const link = { spotifyUrl: 'x', includeOtherDsps: true, deezerUrl: 'https://www.deezer.com/track/1', youtubeCheckedAt: '2026-10-11T00:00:00.000Z' };
+  assert.deepEqual(dspResponseFields(link), {
+    youtubeUrl: '', amazonMusicUrl: '', deezerUrl: 'https://www.deezer.com/track/1',
+    youtubeCheckedAt: '2026-10-11T00:00:00.000Z', includeOtherDsps: true, servicesText: 'Spotify and Deezer',
+  });
+});
+
+test('strict flag parsing used by update-link and links PUT for spotifyOnly and includeOtherDsps', () => {
+  for (const [v, want] of [[true, true], ['true', true], [false, false], ['false', false], ['yes', undefined], [1, undefined], [null, undefined], ['', undefined], ['TRUE', undefined]]) {
+    assert.equal(parseIncludeFlag(v), want, String(v));
+  }
 });
