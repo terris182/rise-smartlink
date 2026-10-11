@@ -328,3 +328,24 @@ test('strict flag parsing used by update-link and links PUT for spotifyOnly and 
     assert.equal(parseIncludeFlag(v), want, String(v));
   }
 });
+
+test('an invalid stored url counts as empty: it is due for lookup and can be replaced', async () => {
+  assert.equal(youtubeDue({ youtubeUrl: 'https://evil.example/x' }), true);
+  assert.deepEqual(dspUpdates({ deezerUrl: 'https://evil.example/x' }, { deezerUrl: 'https://www.deezer.com/track/5' }), { deezerUrl: 'https://www.deezer.com/track/5' });
+});
+
+test('a throwing YouTube fetch still returns the stamped checked-at', async () => {
+  const realFetch = globalThis.fetch;
+  process.env.YOUTUBE_API_KEY = 'test-key';
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('googleapis.com/youtube')) throw new Error('boom');
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  try {
+    const out = await resolveOtherDsps({ artist: 'Throw Artist', title: 'Throw Song', spotifyUrl: TRACK_URL, existing: {}, force: true });
+    assert.ok(out.youtubeCheckedAt);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.YOUTUBE_API_KEY;
+  }
+});
