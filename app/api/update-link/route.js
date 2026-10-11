@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { getLink, updateLink } from '@/lib/links';
 import { checkApiKey } from '@/lib/api-key';
-import { parseIncludeFlag, validateDspInput, dspResponseFields } from '@/lib/dsp-resolver';
+import { parseIncludeFlag, validateDspInput, dspResponseFields, stripServerOnlyFields } from '@/lib/dsp-resolver';
 
 /**
  * PUT /api/update-link
@@ -69,11 +69,12 @@ export async function PUT(request) {
       'title', 'artist', 'spotifyUrl', 'appleMusicUrl', 'soundcloudUrl',
       'coverUrl', 'genre', 'subgenre', 'bgColor', 'fbPixelId', 'fbAccessToken',
       'spotifyOnly', 'coverLocked',
-      'youtubeUrl', 'amazonMusicUrl', 'deezerUrl', 'youtubeCheckedAt', 'includeOtherDsps',
+      'youtubeUrl', 'amazonMusicUrl', 'deezerUrl', 'includeOtherDsps',
     ];
+    // youtubeCheckedAt is server-set only: ignored here even if a client sends it
 
     // WHI-2080: new service links must be https on the allowed domains; reject before anything is written
-    const dspCheck = validateDspInput(body);
+    const dspCheck = validateDspInput(stripServerOnlyFields(body));
     if (dspCheck.errors.length > 0) {
       return NextResponse.json({ error: dspCheck.errors.join('; ') }, { status: 400 });
     }

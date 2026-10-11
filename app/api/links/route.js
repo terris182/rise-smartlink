@@ -3,7 +3,7 @@ import { getAllLinks, getLink, updateLink, createLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
-import { resolveOtherDsps, dspUpdates, wantsOtherDsps, parseIncludeFlag, validateDspInput, dspResponseFields } from '@/lib/dsp-resolver';
+import { resolveOtherDsps, dspUpdates, wantsOtherDsps, parseIncludeFlag, validateDspInput, dspResponseFields, stripServerOnlyFields } from '@/lib/dsp-resolver';
 import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch } from '@/lib/isrc-resolver';
 
 export const dynamic = 'force-dynamic';
@@ -152,7 +152,8 @@ async function resolveFields(link, updates) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { slug, resolve: shouldResolve, ...updates } = body;
+    const { slug, resolve: shouldResolve, ...rawUpdates } = body;
+    const updates = stripServerOnlyFields(rawUpdates); // youtubeCheckedAt is server-set only (WHI-2080)
 
     if (!slug) {
       return NextResponse.json({ error: 'Missing slug' }, { status: 400 });

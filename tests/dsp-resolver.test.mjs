@@ -349,3 +349,38 @@ test('a throwing YouTube fetch still returns the stamped checked-at', async () =
     delete process.env.YOUTUBE_API_KEY;
   }
 });
+
+test('youtubeCheckedAt is not client-writable: update-link ignores it, links PUT strips it (WHI-2080 round 4)', async () => {
+  const { register } = await import('node:module');
+  register('./helpers/route-stubs.mjs', import.meta.url);
+  const { store } = await import('./helpers/stubs/links.mjs');
+  const { PUT: updateLinkPut } = await import('../app/api/update-link/route.js');
+  const { PUT: linksPut } = await import('../app/api/links/route.js');
+  const STAMP = '2026-10-10T00:00:00.000Z';
+  const reset = () => { store.updates = null; store.link = { slug: 'a/b', title: 'Old', spotifyUrl: TRACK_URL, youtubeCheckedAt: STAMP }; };
+  const req = (body) => ({ json: async () => body });
+
+  // update-link: valid-looking and garbage values are both ignored; stored value unchanged, other fields still update
+  for (const bad of ['2020-01-01T00:00:00Z', '', 'not a date']) {
+    reset();
+    const res = await updateLinkPut(req({ slug: 'a/b', title: 'New', youtubeCheckedAt: bad }));
+    assert.equal(res.status, 200, String(bad));
+    assert.equal('youtubeCheckedAt' in store.updates, false, String(bad));
+    assert.equal(store.updates.title, 'New');
+    assert.equal(store.link.youtubeCheckedAt, STAMP);
+  }
+  // update-link with only that field: nothing updatable
+  reset();
+  const only = await updateLinkPut(req({ slug: 'a/b', youtubeCheckedAt: '2020-01-01T00:00:00Z' }));
+  assert.equal(only.status, 400);
+  assert.equal(store.updates, null);
+
+  // links PUT: stripped before it reaches the store
+  for (const bad of ['2020-01-01T00:00:00Z', '', 'not a date']) {
+    reset();
+    const res = await linksPut(req({ slug: 'a/b', title: 'New', youtubeCheckedAt: bad }));
+    assert.equal(res.status, 200, String(bad));
+    assert.equal('youtubeCheckedAt' in store.updates, false, String(bad));
+    assert.equal(store.link.youtubeCheckedAt, STAMP);
+  }
+});
