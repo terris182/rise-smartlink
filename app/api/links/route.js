@@ -3,6 +3,7 @@ import { getAllLinks, getLink, updateLink, createLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
+import { resolveOtherDsps, dspUpdates } from '@/lib/dsp-resolver';
 import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch } from '@/lib/isrc-resolver';
 
 export const dynamic = 'force-dynamic';
@@ -117,6 +118,22 @@ async function resolveFields(link, updates) {
       }
     } catch (err) {
       console.error('[resolveFields] Apple AMP error:', err.message);
+    }
+  }
+
+  // ── Step 7: YouTube, Amazon Music, Deezer (WHI-2080), gated like Apple Music on spotifyOnly ──
+  if (!merged.spotifyOnly && merged.artist && merged.title) {
+    try {
+      const resolved = await resolveOtherDsps({
+        artist: merged.artist,
+        title: merged.title,
+        isrc: spotifyIsrc,
+        spotifyUrl,
+        existing: merged,
+      });
+      Object.assign(resolvedUpdates, dspUpdates(merged, resolved));
+    } catch (err) {
+      console.error('[resolveFields] other DSP resolution error:', err.message);
     }
   }
 

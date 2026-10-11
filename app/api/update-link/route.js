@@ -68,6 +68,7 @@ export async function PUT(request) {
       'title', 'artist', 'spotifyUrl', 'appleMusicUrl', 'soundcloudUrl',
       'coverUrl', 'genre', 'subgenre', 'bgColor', 'fbPixelId', 'fbAccessToken',
       'spotifyOnly', 'coverLocked',
+      'youtubeUrl', 'amazonMusicUrl', 'deezerUrl',
     ];
 
     const updates = {};

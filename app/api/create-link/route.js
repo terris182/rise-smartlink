@@ -6,13 +6,15 @@ import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
 import { checkApiKey } from '@/lib/api-key';
+import { resolveOtherDsps, dspUpdates } from '@/lib/dsp-resolver';
 
 /**
  * POST /api/create-link
  * Creates a new smart link page from a Spotify track or playlist URL.
  *
  * Required: spotifyUrl
- * Optional: title (headline), artist (subtext), slug, appleMusicUrl, genre, subgenre, bgColor
+ * Optional: title (headline), artist (subtext), slug, appleMusicUrl, youtubeUrl, amazonMusicUrl,
+ *           deezerUrl, spotifyOnly, genre, subgenre, bgColor
  *
  * - Auto-fetches artwork from Spotify oEmbed
  * - Auto-resolves Apple Music URL via Songlink/Odesli API
@@ -53,7 +55,7 @@ export async function POST(request) {
 
     // Normalize junk values some API clients (e.g. Bubble) send for blank params
     const junk = (v) => v === null || v === undefined || v === '' || v === 'null' || v === 'undefined';
-    for (const k of ['title', 'artist', 'coverUrl', 'appleMusicUrl', 'genre', 'subgenre', 'slug', 'bgColor', 'dealId']) {
+    for (const k of ['title', 'artist', 'coverUrl', 'appleMusicUrl', 'youtubeUrl', 'amazonMusicUrl', 'deezerUrl', 'genre', 'subgenre', 'slug', 'bgColor', 'dealId']) {
       if (junk(body[k])) delete body[k];
     }
 
@@ -164,6 +166,19 @@ export async function POST(request) {
     // Note: Step 6 (standalone AMP text search) removed — resolveAppleMusicByIsrc
     // already includes AMP text search as Strategy B internally.
 
+    // ── Step 7: YouTube, Amazon Music, Deezer (WHI-2080), same gate as Apple Music ──
+    let otherDsps = {};
+    if (!spotifyOnly && artist && title) {
+      try {
+        const resolved = await resolveOtherDsps({
+          artist, title, isrc: spotifyIsrc, spotifyUrl: body.spotifyUrl, existing: body,
+        });
+        otherDsps = dspUpdates(body, resolved);
+      } catch (err) {
+        console.error('[create-link] other DSP resolution error:', err.message);
+      }
+    }
+
     // Generate slug as artist-name/song-name
     let slug = body.slug;
     if (!slug) {
@@ -225,6 +240,7 @@ export async function POST(request) {
       artist,
       coverUrl: coverUrl || '',
       appleMusicUrl: appleMusicUrl || '',
+      ...otherDsps,
     });
 
     // Build the full URL using the request host or fallback to gudmuzik.com

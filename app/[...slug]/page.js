@@ -3,6 +3,7 @@ import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
+import { resolveOtherDsps, dspUpdates } from '@/lib/dsp-resolver';
 import { notFound } from 'next/navigation';
 import SmartLinkClient from './SmartLinkClient';
 
@@ -171,6 +172,26 @@ async function resolveLink(slug) {
     }
   }
 
+  // ── Step 7: YouTube, Amazon Music, Deezer (WHI-2080) ──
+  // Same gate as Apple Music: spotifyOnly links stay Spotify-only. Only empty fields are filled.
+  if (!link.spotifyOnly && link.artist && link.title &&
+      (!link.youtubeUrl || !link.amazonMusicUrl || !link.deezerUrl)) {
+    try {
+      const resolved = await resolveOtherDsps({
+        artist: link.artist,
+        title: link.title,
+        isrc: spotifyIsrc,
+        spotifyUrl: link.spotifyUrl,
+        existing: link,
+      });
+      const found = dspUpdates(link, resolved);
+      Object.assign(updates, found);
+      Object.assign(link, found);
+    } catch (err) {
+      console.error('[resolveLink] other DSP resolution error:', err.message);
+    }
+  }
+
   // Note: Step 6 (standalone AMP text search) was removed — resolveAppleMusicByIsrc
   // already includes AMP text search as Strategy B, so calling it again was redundant
   // and wasted Apple Music API quota.
@@ -222,6 +243,10 @@ export default async function SmartLinkPage({ params }) {
     coverUrl: link.coverUrl,
     spotifyUrl: link.spotifyUrl,
     appleMusicUrl: link.appleMusicUrl || '',
+    // WHI-2080: spotifyOnly links keep showing only Spotify, even if these were stored earlier
+    youtubeUrl: link.spotifyOnly ? '' : (link.youtubeUrl || ''),
+    amazonMusicUrl: link.spotifyOnly ? '' : (link.amazonMusicUrl || ''),
+    deezerUrl: link.spotifyOnly ? '' : (link.deezerUrl || ''),
     genre: link.genre || '',
     subgenre: link.subgenre || '',
     fbPixelId: link.fbPixelId || '',
