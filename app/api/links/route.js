@@ -3,6 +3,7 @@ import { getAllLinks, getLink, updateLink, createLink } from '@/lib/links';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
+import { resolveOtherDsps, dspUpdates, wantsOtherDsps, parseIncludeFlag, validateDspInput, dspResponseFields, stripServerOnlyFields } from '@/lib/dsp-resolver';
 import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch } from '@/lib/isrc-resolver';
 
 export const dynamic = 'force-dynamic';
@@ -120,6 +121,23 @@ async function resolveFields(link, updates) {
     }
   }
 
+  // ── Step 7: YouTube, Amazon Music, Deezer (WHI-2080), only when includeOtherDsps ──
+  if (wantsOtherDsps(merged) && merged.artist && merged.title) {
+    try {
+      const resolved = await resolveOtherDsps({
+        artist: merged.artist,
+        title: merged.title,
+        isrc: spotifyIsrc,
+        spotifyUrl,
+        existing: merged,
+        force: true, // explicit resolve: the 24 h render guard does not apply
+      });
+      Object.assign(resolvedUpdates, dspUpdates(merged, resolved));
+    } catch (err) {
+      console.error('[resolveFields] other DSP resolution error:', err.message);
+    }
+  }
+
   return resolvedUpdates;
 }
 
@@ -134,10 +152,24 @@ async function resolveFields(link, updates) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { slug, resolve: shouldResolve, ...updates } = body;
+    const { slug, resolve: shouldResolve, ...rawUpdates } = body;
+    const updates = stripServerOnlyFields(rawUpdates); // youtubeCheckedAt is server-set only (WHI-2080)
 
     if (!slug) {
       return NextResponse.json({ error: 'Missing slug' }, { status: 400 });
+    }
+
+    // WHI-2080: validate the new service links; parse the two flags strictly (true/"true", false/"false")
+    const dspCheck = validateDspInput(updates);
+    if (dspCheck.errors.length > 0) {
+      return NextResponse.json({ error: dspCheck.errors.join('; ') }, { status: 400 });
+    }
+    Object.assign(updates, dspCheck.values);
+    for (const flagField of ['includeOtherDsps', 'spotifyOnly']) {
+      if (updates[flagField] === undefined) continue;
+      const flag = parseIncludeFlag(updates[flagField]);
+      if (flag === undefined) delete updates[flagField];
+      else updates[flagField] = flag;
     }
 
     const existing = await getLink(slug);
@@ -160,7 +192,7 @@ export async function PUT(request) {
     const updated = await updateLink(slug, updates);
     const { fbAccessToken, ...safeLink } = updated;
 
-    return NextResponse.json({ success: true, link: safeLink });
+    return NextResponse.json({ success: true, link: safeLink, ...dspResponseFields(updated) });
   } catch (err) {
     console.error('[/api/links] PUT Error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

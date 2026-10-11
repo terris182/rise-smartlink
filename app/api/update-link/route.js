@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { getLink, updateLink } from '@/lib/links';
 import { checkApiKey } from '@/lib/api-key';
+import { parseIncludeFlag, validateDspInput, dspResponseFields, stripServerOnlyFields } from '@/lib/dsp-resolver';
 
 /**
  * PUT /api/update-link
@@ -68,11 +69,27 @@ export async function PUT(request) {
       'title', 'artist', 'spotifyUrl', 'appleMusicUrl', 'soundcloudUrl',
       'coverUrl', 'genre', 'subgenre', 'bgColor', 'fbPixelId', 'fbAccessToken',
       'spotifyOnly', 'coverLocked',
+      'youtubeUrl', 'amazonMusicUrl', 'deezerUrl', 'includeOtherDsps',
     ];
+    // youtubeCheckedAt is server-set only: ignored here even if a client sends it
 
+    // WHI-2080: new service links must be https on the allowed domains; reject before anything is written
+    const dspCheck = validateDspInput(stripServerOnlyFields(body));
+    if (dspCheck.errors.length > 0) {
+      return NextResponse.json({ error: dspCheck.errors.join('; ') }, { status: 400 });
+    }
+
+    const strictFlags = ['includeOtherDsps', 'spotifyOnly'];
     const updates = {};
     for (const field of allowedFields) {
-      if (body[field] !== undefined) {
+      if (body[field] === undefined) continue;
+      if (strictFlags.includes(field)) {
+        // true/"true" and false/"false" only; anything else leaves the stored value unchanged
+        const flag = parseIncludeFlag(body[field]);
+        if (flag !== undefined) updates[field] = flag;
+      } else if (field in dspCheck.values) {
+        updates[field] = dspCheck.values[field];
+      } else {
         updates[field] = body[field];
       }
     }
@@ -99,6 +116,7 @@ export async function PUT(request) {
     return NextResponse.json({
       success: true,
       link: safeLink,
+      ...dspResponseFields(updated),
     });
   } catch (err) {
     console.error('[/api/update-link] Error:', err);

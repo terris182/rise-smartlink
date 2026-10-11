@@ -379,7 +379,7 @@ function StatsView({ slug, data }) {
             {platformEntries.map(([platform, count]) => {
               const pctClicks = clicks > 0 ? ((count / clicks) * 100).toFixed(1) : '0.0';
               const platCtr = visits > 0 ? ((count / visits) * 100).toFixed(1) : '0.0';
-              const color = platform === 'spotify' ? '#1DB954' : platform === 'apple_music' ? '#FA243C' : '#3b82f6';
+              const color = PLATFORM_COLORS[platform] || '#3b82f6';
               return (
                 <React.Fragment key={platform}>
                   <span style={{ color: '#ccc' }}>{formatPlatform(platform)}</span>
@@ -456,8 +456,24 @@ function StatsView({ slug, data }) {
   );
 }
 
+// Click-bar colours per button key (WHI-2080 added youtube, amazon_music, deezer)
+const PLATFORM_COLORS = {
+  spotify: '#1DB954',
+  apple_music: '#FA243C',
+  youtube: '#FF0033',
+  amazon_music: '#25D1DA',
+  deezer: '#A238FF',
+};
+
 function formatPlatform(key) {
-  const map = { spotify: 'Spotify', apple_music: 'Apple Music', soundcloud: 'SoundCloud' };
+  const map = {
+    spotify: 'Spotify',
+    apple_music: 'Apple Music',
+    youtube: 'YouTube',
+    amazon_music: 'Amazon Music',
+    deezer: 'Deezer',
+    soundcloud: 'SoundCloud',
+  };
   return map[key] || key;
 }
 

@@ -6,13 +6,15 @@ import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
 import { checkApiKey } from '@/lib/api-key';
+import { resolveOtherDsps, dspUpdates, includeOtherDspsFromBody, validateDspInput, dspResponseFields } from '@/lib/dsp-resolver';
 
 /**
  * POST /api/create-link
  * Creates a new smart link page from a Spotify track or playlist URL.
  *
  * Required: spotifyUrl
- * Optional: title (headline), artist (subtext), slug, appleMusicUrl, genre, subgenre, bgColor
+ * Optional: title (headline), artist (subtext), slug, appleMusicUrl, youtubeUrl, amazonMusicUrl,
+ *           deezerUrl, spotifyOnly, includeOtherDsps, genre, subgenre, bgColor
  *
  * - Auto-fetches artwork from Spotify oEmbed
  * - Auto-resolves Apple Music URL via Songlink/Odesli API
@@ -53,9 +55,16 @@ export async function POST(request) {
 
     // Normalize junk values some API clients (e.g. Bubble) send for blank params
     const junk = (v) => v === null || v === undefined || v === '' || v === 'null' || v === 'undefined';
-    for (const k of ['title', 'artist', 'coverUrl', 'appleMusicUrl', 'genre', 'subgenre', 'slug', 'bgColor', 'dealId']) {
+    for (const k of ['title', 'artist', 'coverUrl', 'appleMusicUrl', 'youtubeUrl', 'amazonMusicUrl', 'deezerUrl', 'youtubeCheckedAt', 'genre', 'subgenre', 'slug', 'bgColor', 'dealId']) {
       if (junk(body[k])) delete body[k];
     }
+
+    // WHI-2080: client-supplied YouTube / Amazon Music / Deezer links must be https on the allowed domains
+    const dspCheck = validateDspInput(body);
+    if (dspCheck.errors.length > 0) {
+      return NextResponse.json({ error: dspCheck.errors.join('; ') }, { status: 400 });
+    }
+    Object.assign(body, dspCheck.values);
 
     // Validate required fields
     if (!body.spotifyUrl) {
@@ -76,6 +85,7 @@ export async function POST(request) {
       return NextResponse.json({
         success: true,
         link: safeExisting,
+        ...dspResponseFields(existing),
         url: `${protocol}://${host}/${existing.slug}`,
         reused: true,
       });
@@ -164,6 +174,20 @@ export async function POST(request) {
     // Note: Step 6 (standalone AMP text search) removed — resolveAppleMusicByIsrc
     // already includes AMP text search as Strategy B internally.
 
+    // ── Step 7: YouTube, Amazon Music, Deezer (WHI-2080), only when includeOtherDsps ──
+    let otherDsps = {};
+    const includeOtherDsps = includeOtherDspsFromBody(body);
+    if (includeOtherDsps && !spotifyOnly && artist && title) {
+      try {
+        const resolved = await resolveOtherDsps({
+          artist, title, isrc: spotifyIsrc, spotifyUrl: body.spotifyUrl, existing: body, force: true,
+        });
+        otherDsps = dspUpdates(body, resolved);
+      } catch (err) {
+        console.error('[create-link] other DSP resolution error:', err.message);
+      }
+    }
+
     // Generate slug as artist-name/song-name
     let slug = body.slug;
     if (!slug) {
@@ -225,6 +249,8 @@ export async function POST(request) {
       artist,
       coverUrl: coverUrl || '',
       appleMusicUrl: appleMusicUrl || '',
+      ...otherDsps,
+      includeOtherDsps,
     });
 
     // Build the full URL using the request host or fallback to gudmuzik.com
@@ -236,6 +262,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       link: safeLink,
+      ...dspResponseFields(link),
       url: fullUrl,
     });
   } catch (err) {

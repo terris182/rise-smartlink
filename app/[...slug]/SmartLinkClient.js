@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import Script from 'next/script';
+// Brand marks come from the simple-icons package (not hand drawn). Amazon Music was dropped from
+// simple-icons after v14 and Deezer only exists in newer versions, so the two are imported separately.
+import { siYoutube, siDeezer } from 'simple-icons';
+import { siAmazonmusic } from 'simple-icons-v14';
 
 /**
  * Client-side Smart Link page component.
@@ -12,6 +16,18 @@ import Script from 'next/script';
  * 4. Facebook Conversions API (server-side via /api/track) for the same events
  * 5. Event deduplication using shared event_id between pixel and CAPI
  */
+
+function brandColor(icon) {
+  return `#${icon.hex}`;
+}
+
+function brandIcon(icon) {
+  return (
+    <svg viewBox="0 0 24 24" width="30" height="30" fill={brandColor(icon)} aria-hidden="true">
+      <path d={icon.path} />
+    </svg>
+  );
+}
 
 function generateEventId() {
   return 'evt_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -209,6 +225,27 @@ export default function SmartLinkClient({ link, isPresave }) {
           <path d="M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.073-.005-.146-.01-.22-.015H5.988c-.076.005-.15.01-.225.015a10.487 10.487 0 00-1.564.15 5.022 5.022 0 00-1.877.726C1.204 1.644.46 2.644.143 3.954a9.23 9.23 0 00-.24 2.19L0 6.2v11.8c.003.076.006.151.01.227.017.387.05.774.107 1.159.14.962.472 1.848 1.014 2.638a4.96 4.96 0 001.837 1.597c.517.26 1.065.437 1.64.527.39.06.784.093 1.18.108.07.004.141.008.212.012h12.2c.071-.004.142-.008.213-.012a10.5 10.5 0 001.18-.108 5.022 5.022 0 001.64-.527 4.96 4.96 0 001.837-1.597c.542-.79.873-1.676 1.014-2.638.057-.385.09-.772.107-1.16L24 17.8V6.2l-.006-.076zM16.95 17.333c0 .343-.097.653-.284.927-.187.274-.44.477-.76.612-.218.09-.448.158-.69.204a4.677 4.677 0 01-.805.065c-.12-.003-.24-.017-.358-.042a1.62 1.62 0 01-.661-.29 1.162 1.162 0 01-.442-.646 1.455 1.455 0 01-.02-.67c.06-.26.183-.485.37-.674.187-.188.41-.33.668-.426.258-.098.53-.17.814-.222.283-.05.568-.09.854-.118.17-.018.3-.07.393-.154.094-.083.14-.2.14-.347V9.58a.456.456 0 00-.098-.316.472.472 0 00-.302-.154l-5.264.996a.393.393 0 00-.246.125.404.404 0 00-.09.28l-.003 7.51c0 .343-.092.65-.276.924-.184.274-.434.477-.75.612-.216.09-.444.158-.683.204-.24.046-.484.067-.733.065a2.66 2.66 0 01-.356-.042 1.62 1.62 0 01-.662-.29 1.162 1.162 0 01-.442-.646 1.455 1.455 0 01-.02-.67c.06-.26.183-.485.37-.674.187-.188.41-.33.668-.426.258-.098.53-.17.815-.222.283-.05.567-.09.853-.118.17-.018.3-.07.393-.154.094-.083.14-.2.14-.347V7.257c0-.2.052-.37.157-.514.104-.144.25-.24.44-.29l6.188-1.296a.792.792 0 01.17-.022c.17 0 .305.055.404.165.1.11.15.26.15.445v11.588z"/>
         </svg>
       ),
+    },
+    {
+      key: 'youtube',
+      label: 'YouTube',
+      url: link.youtubeUrl,
+      color: brandColor(siYoutube),
+      icon: brandIcon(siYoutube),
+    },
+    {
+      key: 'amazon_music',
+      label: 'Amazon Music',
+      url: link.amazonMusicUrl,
+      color: brandColor(siAmazonmusic),
+      icon: brandIcon(siAmazonmusic),
+    },
+    {
+      key: 'deezer',
+      label: 'Deezer',
+      url: link.deezerUrl,
+      color: brandColor(siDeezer),
+      icon: brandIcon(siDeezer),
     },
   ].filter((p) => p.url);
 
