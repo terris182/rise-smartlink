@@ -111,6 +111,7 @@ test('explicit includeOtherDsps true (boolean or text) opts in; update flag pars
   assert.equal(includeOtherDspsFromBody({ includeOtherDsps: true }), true);
   assert.equal(includeOtherDspsFromBody({ includeOtherDsps: 'true' }), true);
   assert.equal(includeOtherDspsFromBody({ includeOtherDsps: 'false' }), false);
+  assert.equal(includeOtherDspsFromBody({ includeOtherDsps: false, spotifyOnly: false }), false);
   assert.equal(parseIncludeFlag('true'), true);
   assert.equal(parseIncludeFlag(false), false);
   assert.equal(parseIncludeFlag('false'), false);
