@@ -5,7 +5,7 @@ import { runScheduledJobs } from '@/lib/curator-jobs';
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store'; // WHI-883: never serve deploy-time cached data reads
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300; // PA 2026-10-19: 8 playlists run in series, Alt Pop finishes ~37s in, 60s cut off its last-updated save
 
 /**
  * GET /api/curator/cron: runs every active job whose cadence is 'daily' and is due this PST hour.
