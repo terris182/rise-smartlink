@@ -36,3 +36,15 @@ test('empty and missing input give an empty list', () => {
 test('bare id without a pipe maps to id and name', () => {
   assert.deepEqual(parsePairs('US'), [{ id: 'US', name: 'US' }]);
 });
+
+test('bare codes with no pipe split on every comma', () => {
+  assert.deepEqual(parsePairs('US,CA'), [{ id: 'US', name: 'US' }, { id: 'CA', name: 'CA' }]);
+});
+
+test('five bare codes', () => {
+  assert.deepEqual(parsePairs('US,CA,GB,AU,NZ').map((x) => x.id), ['US', 'CA', 'GB', 'AU', 'NZ']);
+});
+
+test('mixed real format is unchanged', () => {
+  assert.deepEqual(parsePairs('US|United States,CA|Canada,GB|United Kingdom').map((x) => x.id), ['US', 'CA', 'GB']);
+});
