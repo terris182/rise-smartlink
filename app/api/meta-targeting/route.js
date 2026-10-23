@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { parsePairs } from '@/lib/parse-pairs';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -136,14 +137,6 @@ async function artistSuggestions(genre) {
     } catch (e) { /* skip this name */ }
   }
   return remember(key, out);
-}
-
-// "US|United States,CA|Canada" -> [{id, name}]
-function parsePairs(s) {
-  return String(s || '').split(',').map((x) => x.trim()).filter(Boolean).map((x) => {
-    const i = x.indexOf('|');
-    return i < 0 ? { id: x, name: x } : { id: x.slice(0, i).trim(), name: x.slice(i + 1).trim() };
-  }).filter((x) => x.id);
 }
 
 // parity with Main's lAauf (Update Ad Set Targeting), which sent home + recent + frequently_in; Main's create step sent none (Meta default home,recent)
