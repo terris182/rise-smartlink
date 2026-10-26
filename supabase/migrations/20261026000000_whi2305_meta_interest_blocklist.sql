@@ -30,3 +30,4 @@ create or replace function note_meta_interest(
     campaign_id = coalesce(meta_interest_blocklist.campaign_id, excluded.campaign_id);
 $$;
 revoke all on function note_meta_interest(text, text, text, text, text, text) from public, anon, authenticated;
+grant execute on function note_meta_interest(text, text, text, text, text, text) to service_role;
