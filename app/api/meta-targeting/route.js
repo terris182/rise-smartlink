@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { recordBlockedInterest, recordNoCountries, filterBlocked, getBlocked, isBlocked } from '@/lib/interest-blocklist';
+import { parsePairs } from '@/lib/parse-pairs';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -146,14 +147,6 @@ async function artistSuggestions(genre) {
 }
 
 const campaignOf = (p) => (p.get('campaign_id') || p.get('order_id') || '').trim();
-
-// "US|United States,CA|Canada" -> [{id, name}]
-function parsePairs(s) {
-  return String(s || '').split(',').map((x) => x.trim()).filter(Boolean).map((x) => {
-    const i = x.indexOf('|');
-    return i < 0 ? { id: x, name: x } : { id: x.slice(0, i).trim(), name: x.slice(i + 1).trim() };
-  }).filter((x) => x.id);
-}
 
 // parity with Main's lAauf (Update Ad Set Targeting), which sent home + recent + frequently_in; Main's create step sent none (Meta default home,recent)
 const LOCATION_TYPES = ['home', 'recent', 'frequently_in'];
