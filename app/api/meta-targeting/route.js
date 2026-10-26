@@ -107,16 +107,20 @@ async function searchCountries(q) {
 }
 
 async function validInterests(names) {
-  if (!names.length) return [];
+  if (!names.length) return { valid: [], rejected: new Set() };
   const data = await graphSearch({ type: 'adinterestvalid', interest_list: JSON.stringify(names) });
-  return data.filter((x) => x.valid).map(trimInterest);
+  // rejected = names Meta explicitly answered valid:false (a missing entry is NOT a rejection, so it is never blocklisted)
+  const rejected = new Set(data.filter((x) => x.valid === false && x.name).map((x) => String(x.name).toLowerCase()));
+  return { valid: data.filter((x) => x.valid).map(trimInterest), rejected };
 }
 
 function genreKey(genre) { return GENRE_ALIAS[genre] || genre; }
 
 async function genreInterest(genre) {
   const key = 'genre:' + genre;
-  const hit = cached(key); if (hit) return hit;
+  const hit = cached(key);
+  if (hit && !isBlocked(await getBlocked(), hit)) return hit;
+  if (hit) cache.delete(key);
   const term = GENRE_TERM[genre] || GENRE_TERM[genreKey(genre)] || (genre + ' music');
   const found = await searchInterests(term, 8);
   const lower = term.toLowerCase();
@@ -185,7 +189,8 @@ async function buildTargeting(p) {
       const blocked = await getBlocked();
       const pending = [];
       for (const w of wanted) { if (isBlocked(blocked, w)) dropped.push('invalid interest ' + w.name); else pending.push(w); }
-      const valid = await validInterests(pending.map((w) => w.name));
+      const { valid, rejected } = await validInterests(pending.map((w) => w.name));
+      const toRecord = [];
       const validIds = new Set(valid.map((v) => v.id));
       const validNames = new Map(valid.map((v) => [v.name.toLowerCase(), v]));
       for (const w of pending) {
@@ -193,9 +198,10 @@ async function buildTargeting(p) {
         if (v) interests.push({ id: v.id, name: v.name }); else {
           dropped.push('invalid interest ' + w.name);
           // WHI-2305: internal note + blocklist for the future; no alert, no customer message
-          await recordBlockedInterest({ id: w.id, name: w.name, reason: 'failed Meta validation', campaignId: campaignOf(p) });
+          if (rejected.has(w.name.toLowerCase())) toRecord.push(recordBlockedInterest({ id: w.id, name: w.name, reason: 'failed Meta validation', campaignId: campaignOf(p) }));
         }
       }
+      await Promise.all(toRecord);
     }
   }
   if (!interests.length) {

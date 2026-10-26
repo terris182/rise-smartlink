@@ -14,6 +14,12 @@ const { GET } = await import('../app/api/meta-targeting/route.js');
 class Fake {
   constructor() { this.rows = new Map(); this.failWrites = false; }
   from() { return new Q(this); }
+  rpc(fn, a) {
+    if (this.failWrites) return Promise.resolve({ error: { message: 'down' } });
+    const r = this.rows.get(a.p_key);
+    this.rows.set(a.p_key, r ? { ...r, count: r.count + 1, campaign_id: r.campaign_id || a.p_campaign_id } : { key: a.p_key, kind: a.p_kind, interest_id: a.p_interest_id, name: a.p_name, reason: a.p_reason, campaign_id: a.p_campaign_id, count: 1, first_seen: 'now', last_seen: 'now' });
+    return Promise.resolve({ error: null });
+  }
 }
 class Q {
   constructor(db) { this.db = db; this.f = []; this.op = 'select'; }
@@ -43,7 +49,7 @@ globalThis.fetch = async (url) => {
   metaCalls.push(u.searchParams.get('type'));
   const type = u.searchParams.get('type');
   let data = [];
-  if (type === 'adinterestvalid') data = JSON.parse(u.searchParams.get('interest_list')).map((n) => (n === 'Pop music' ? { ...GOOD, valid: true } : { name: n, valid: false }));
+  if (type === 'adinterestvalid') data = JSON.parse(u.searchParams.get('interest_list')).filter((n) => n !== 'Missing From Reply').map((n) => (n === 'Pop music' ? { ...GOOD, valid: true } : { name: n, valid: false }));
   if (type === 'adinterest') data = [GOOD, BAD];
   return { ok: true, status: 200, json: async () => ({ data }) };
 };
@@ -90,4 +96,31 @@ test('a down database never breaks targeting (fail soft, nothing filtered)', asy
   const out = await call('type=targeting_json&targeting=custom&countries=US|United States&genre=Pop&interests=999|Zzz Fake Interest');
   assert.equal(out.mode, 'custom');
   assert.match(out.dropped, /invalid interest/);
+});
+
+test('an interest missing from Meta\'s reply (not an explicit valid:false) is dropped but never blocklisted', async () => {
+  const out = await call('type=targeting_json&targeting=custom&countries=US|United States&genre=Pop&interests=5|Missing From Reply');
+  assert.match(out.dropped, /invalid interest Missing From Reply/);
+  assert.equal(db.rows.size, 0);
+});
+
+test('blocking is by id: another interest sharing the display name stays available', async () => {
+  await call('type=targeting_json&targeting=custom&countries=US|United States&genre=Pop&interests=999|Zzz Fake Interest');
+  bl.__resetCache();
+  const b = await bl.getBlocked();
+  assert.equal(bl.isBlocked(b, { id: '999', name: 'x' }), true);
+  assert.equal(bl.isBlocked(b, { id: '1000', name: 'Zzz Fake Interest' }), false);
+});
+
+test('a repeated bad interest is skipped before Meta and not double counted', async () => {
+  for (let i = 0; i < 2; i++) { bl.__resetCache(); await call('type=targeting_json&targeting=custom&countries=US|United States&genre=Pop&interests=998|Other Fake'); }
+  assert.equal(db.rows.get('interest:998').count, 1); // second call skips Meta because it is already blocklisted
+});
+
+test('a cached genre interest that later gets blocklisted is no longer returned', async () => {
+  const first = await call('type=genre&genre=Pop');
+  assert.equal(first.results[0].id, '600');
+  await bl.recordBlockedInterest({ id: '600', name: 'Pop music' });
+  const again = await call('type=genre&genre=Pop');
+  assert.ok(!again.results.some((r) => r.id === '600'));
 });
