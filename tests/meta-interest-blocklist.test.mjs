@@ -124,3 +124,14 @@ test('a cached genre interest that later gets blocklisted is no longer returned'
   const again = await call('type=genre&genre=Pop');
   assert.ok(!again.results.some((r) => r.id === '600'));
 });
+
+test('no_countries note sends all six RPC params (null allowed, never undefined)', async () => {
+  const seen = [];
+  bl.__setTestClient({ rpc(fn, a) { seen.push({ fn, a }); return Promise.resolve({ error: null }); } });
+  assert.equal(await bl.recordNoCountries({ campaignId: 'C9' }), true);
+  assert.equal(seen[0].fn, 'note_meta_interest');
+  // supabase-js drops undefined keys, so JSON round-trip mirrors what PostgREST receives
+  const sent = JSON.parse(JSON.stringify(seen[0].a));
+  for (const k of ['p_key', 'p_kind', 'p_interest_id', 'p_name', 'p_reason', 'p_campaign_id']) assert.ok(k in sent, 'missing ' + k);
+  assert.equal(sent.p_interest_id, null); assert.equal(sent.p_name, null);
+});
