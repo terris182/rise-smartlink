@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { recordBlockedInterest, recordNoCountries, filterBlocked, getBlocked, isBlocked } from '@/lib/interest-blocklist';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -96,7 +97,8 @@ const trimInterest = (x) => ({ id: String(x.id), name: x.name, size: x.audience_
 
 async function searchInterests(q, limit = 10) {
   const data = await graphSearch({ type: 'adinterest', q, limit: String(limit) });
-  return data.map(trimInterest);
+  // WHI-2305: never offer an interest Meta already rejected
+  return filterBlocked(data.map(trimInterest));
 }
 
 async function searchCountries(q) {
@@ -125,7 +127,7 @@ async function genreInterest(genre) {
 
 async function artistSuggestions(genre) {
   const key = 'suggest:' + genreKey(genre);
-  const hit = cached(key); if (hit) return hit;
+  const hit = cached(key); if (hit) return filterBlocked(hit);
   const names = GENRE_ARTISTS[genreKey(genre)] || [];
   const out = [];
   for (const n of names) {
@@ -135,8 +137,11 @@ async function artistSuggestions(genre) {
       if (exact) out.push(exact);
     } catch (e) { /* skip this name */ }
   }
-  return remember(key, out);
+  remember(key, out);
+  return filterBlocked(out);
 }
+
+const campaignOf = (p) => (p.get('campaign_id') || p.get('order_id') || '').trim();
 
 // "US|United States,CA|Canada" -> [{id, name}]
 function parsePairs(s) {
@@ -163,7 +168,11 @@ async function buildTargeting(p) {
   } else {
     let codes = targeting === 'custom' ? parsePairs(p.get('countries')).map((c) => c.id.toUpperCase()) : BIG5;
     codes = codes.filter((c) => /^[A-Z]{2}$/.test(c));
-    if (!codes.length) { dropped.push('no valid countries, used Big 5'); codes = BIG5; }
+    if (!codes.length) {
+      dropped.push('no valid countries, used Big 5'); codes = BIG5;
+      // WHI-2305: internal note only (Custom with zero countries); the Big 5 safety net stays
+      if (targeting === 'custom') await recordNoCountries({ campaignId: campaignOf(p) });
+    }
     obj.geo_locations = { countries: codes, location_types: LOCATION_TYPES };
   }
 
@@ -173,12 +182,19 @@ async function buildTargeting(p) {
   if (targeting === 'custom') {
     const wanted = parsePairs(p.get('interests'));
     if (wanted.length) {
-      const valid = await validInterests(wanted.map((w) => w.name));
+      const blocked = await getBlocked();
+      const pending = [];
+      for (const w of wanted) { if (isBlocked(blocked, w)) dropped.push('invalid interest ' + w.name); else pending.push(w); }
+      const valid = await validInterests(pending.map((w) => w.name));
       const validIds = new Set(valid.map((v) => v.id));
       const validNames = new Map(valid.map((v) => [v.name.toLowerCase(), v]));
-      for (const w of wanted) {
+      for (const w of pending) {
         const v = validIds.has(w.id) ? { id: w.id, name: w.name } : validNames.get(w.name.toLowerCase());
-        if (v) interests.push({ id: v.id, name: v.name }); else dropped.push('invalid interest ' + w.name);
+        if (v) interests.push({ id: v.id, name: v.name }); else {
+          dropped.push('invalid interest ' + w.name);
+          // WHI-2305: internal note + blocklist for the future; no alert, no customer message
+          await recordBlockedInterest({ id: w.id, name: w.name, reason: 'failed Meta validation', campaignId: campaignOf(p) });
+        }
       }
     }
   }
