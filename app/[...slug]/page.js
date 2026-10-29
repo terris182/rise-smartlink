@@ -5,6 +5,8 @@ import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveAppleMusicByIsrc, deezerSearch } from '@/lib/isrc-resolver';
 import { resolveOtherDsps, dspUpdates, wantsOtherDsps, visibleOtherDsps } from '@/lib/dsp-resolver';
 import { notFound } from 'next/navigation';
+import { cache } from 'react';
+import { createTtlCache } from '@/lib/ttl-cache';
 import SmartLinkClient from './SmartLinkClient';
 
 // Never cache — always fetch fresh data from KV
@@ -52,7 +54,15 @@ function shouldShowPresave(link) {
   return easternNow < releaseDate;
 }
 
-async function resolveLink(slug) {
+// WHI-2392: remember (per warm instance) that the Apple Music lookup found nothing, so a link
+// with no Apple match (playlists, new releases) does not repeat 3 external lookups per view.
+const appleMissCache = createTtlCache({ max: 1000 });
+const APPLE_MISS_TTL_MS = 60 * 60 * 1000;
+
+// React cache(): generateMetadata and the page both call this in one request; run it once.
+const resolveLink = cache(resolveLinkUncached);
+
+async function resolveLinkUncached(slug) {
   const link = await getLink(slug);
   if (!link) return null;
 
@@ -132,7 +142,8 @@ async function resolveLink(slug) {
   }
 
   // ── Step 4: iTunes Search (needs artist + title) ──
-  if (!link.appleMusicUrl && !link.spotifyOnly && link.artist && link.title) {
+  const appleRecentlyMissed = appleMissCache.get(slug) === true;
+  if (!link.appleMusicUrl && !link.spotifyOnly && !appleRecentlyMissed && link.artist && link.title) {
     try {
       const itunesUrl = await searchAppleMusicUrl(link.artist, link.title);
       if (itunesUrl) {
@@ -146,7 +157,7 @@ async function resolveLink(slug) {
 
   // ── Step 5: ISRC-based resolution (most reliable for new tracks) ──
   // Try Spotify ISRC first, fall back to Deezer ISRC
-  if (!link.appleMusicUrl && !link.spotifyOnly && (spotifyIsrc || (link.artist && link.title))) {
+  if (!link.appleMusicUrl && !link.spotifyOnly && !appleRecentlyMissed && (spotifyIsrc || (link.artist && link.title))) {
     try {
       let isrc = spotifyIsrc;
 
@@ -170,6 +181,10 @@ async function resolveLink(slug) {
     } catch (err) {
       console.error('[resolveLink] ISRC resolution error:', err.message);
     }
+  }
+
+  if (!link.appleMusicUrl && !link.spotifyOnly && !appleRecentlyMissed && link.artist && link.title) {
+    appleMissCache.set(slug, true, APPLE_MISS_TTL_MS);
   }
 
   // ── Step 7: YouTube, Amazon Music, Deezer (WHI-2080) ──
