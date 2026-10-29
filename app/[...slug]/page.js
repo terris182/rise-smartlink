@@ -142,6 +142,7 @@ async function resolveLinkUncached(slug) {
   }
 
   // ── Step 4: iTunes Search (needs artist + title) ──
+  let appleLookupFailed = false;
   const appleRecentlyMissed = appleMissCache.get(slug) === true;
   if (!link.appleMusicUrl && !link.spotifyOnly && !appleRecentlyMissed && link.artist && link.title) {
     try {
@@ -151,6 +152,7 @@ async function resolveLinkUncached(slug) {
         link.appleMusicUrl = itunesUrl;
       }
     } catch (err) {
+      appleLookupFailed = true;
       console.error('[resolveLink] iTunes search error:', err.message);
     }
   }
@@ -179,11 +181,14 @@ async function resolveLinkUncached(slug) {
         }
       }
     } catch (err) {
+      appleLookupFailed = true;
       console.error('[resolveLink] ISRC resolution error:', err.message);
     }
   }
 
-  if (!link.appleMusicUrl && !link.spotifyOnly && !appleRecentlyMissed && link.artist && link.title) {
+  // Only a clean "not found" is remembered; an error (timeout, 5xx, Spotify auth) is retried next view.
+  const spotifyTrackLookupFailed = /\/track\//.test(link.spotifyUrl || '') && !spotifyIsrc;
+  if (!link.appleMusicUrl && !link.spotifyOnly && !appleRecentlyMissed && !appleLookupFailed && !spotifyTrackLookupFailed && link.artist && link.title) {
     appleMissCache.set(slug, true, APPLE_MISS_TTL_MS);
   }
 

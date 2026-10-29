@@ -49,3 +49,12 @@ test('track lookup that gets 401 refreshes the token and retries once', async ()
   await fetchSpotifyTrackMeta('https://open.spotify.com/track/5NsLNt21kTY69aLtU9J1ga');
   assert.equal(trackCalls, 2); // second visit served from cache
 });
+
+test('concurrent cold lookups share one call', async () => {
+  const { cached, createTtlCache: mk } = await import('../lib/ttl-cache.js');
+  const c = mk(); let n = 0;
+  const load = async () => { n++; await new Promise((r) => setTimeout(r, 10)); return 'v'; };
+  const r = await Promise.all([1, 2, 3].map(() => cached(c, 'k', load, () => 1000)));
+  assert.deepEqual(r, ['v', 'v', 'v']);
+  assert.equal(n, 1);
+});
