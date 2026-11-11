@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { getLink, updateLink } from '@/lib/links';
 import { checkApiKey } from '@/lib/api-key';
+import { withSpotifySiTag } from '@/lib/link-match';
 import { parseIncludeFlag, validateDspInput, dspResponseFields, stripServerOnlyFields } from '@/lib/dsp-resolver';
 
 /**
@@ -92,6 +93,11 @@ export async function PUT(request) {
       } else {
         updates[field] = body[field];
       }
+    }
+
+    // WHI-2266 ledger 2287: store every Spotify link with si=gud (artist tags like si=vex kept)
+    if (typeof updates.spotifyUrl === 'string' && updates.spotifyUrl) {
+      updates.spotifyUrl = withSpotifySiTag(updates.spotifyUrl);
     }
 
     if (Object.keys(updates).length === 0) {

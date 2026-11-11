@@ -5,6 +5,7 @@ import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
 import { resolveOtherDsps, dspUpdates, wantsOtherDsps, parseIncludeFlag, validateDspInput, dspResponseFields, stripServerOnlyFields } from '@/lib/dsp-resolver';
 import { resolveAppleMusicByIsrc, deezerSearch, appleMusicAmpSearch } from '@/lib/isrc-resolver';
+import { withSpotifySiTag } from '@/lib/link-match';
 
 export const dynamic = 'force-dynamic';
 
@@ -175,6 +176,11 @@ export async function PUT(request) {
     const existing = await getLink(slug);
     if (!existing) {
       return NextResponse.json({ error: 'Link not found' }, { status: 404 });
+    }
+
+    // WHI-2266 ledger 2287: store every Spotify link with si=gud (artist tags like si=vex kept)
+    if (typeof updates.spotifyUrl === 'string' && updates.spotifyUrl) {
+      updates.spotifyUrl = withSpotifySiTag(updates.spotifyUrl);
     }
 
     // Run full resolution if requested or if Spotify URL changed

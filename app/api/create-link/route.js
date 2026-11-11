@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createLink, getLink, findLinkBySpotifyTrack, findLinkByDeal } from '@/lib/links';
-import { parseSpotifyTrackId, isSlugVariant } from '@/lib/link-match';
+import { parseSpotifyTrackId, isSlugVariant, withSpotifySiTag } from '@/lib/link-match';
 import { fetchSpotifyMeta } from '@/lib/spotify';
 import { fetchSpotifyTrackMeta } from '@/lib/spotify-api';
 import { searchAppleMusicUrl } from '@/lib/itunes';
@@ -73,6 +73,9 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    // WHI-2266 ledger 2287: store every Spotify link with si=gud (artist tags like si=vex kept)
+    body.spotifyUrl = withSpotifySiTag(String(body.spotifyUrl));
 
     const host = request.headers.get('host') || 'gudmuzik.com';
     const protocol = host.includes('localhost') ? 'http' : 'https';

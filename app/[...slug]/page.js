@@ -8,6 +8,7 @@ import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { createTtlCache } from '@/lib/ttl-cache';
 import SmartLinkClient from './SmartLinkClient';
+import { withSpotifySiTag } from '@/lib/link-match';
 
 // Never cache — always fetch fresh data from KV
 export const dynamic = 'force-dynamic';
@@ -261,7 +262,8 @@ export default async function SmartLinkPage({ params }) {
     title: link.title,
     artist: link.artist,
     coverUrl: link.coverUrl,
-    spotifyUrl: link.spotifyUrl,
+    // WHI-2266 ledger 2287: the Spotify button always opens with si=gud (artist tags like si=vex kept)
+    spotifyUrl: withSpotifySiTag(link.spotifyUrl),
     appleMusicUrl: link.appleMusicUrl || '',
     // WHI-2080: shown only when the link opted in (includeOtherDsps); never for spotifyOnly
     ...visibleOtherDsps(link),
